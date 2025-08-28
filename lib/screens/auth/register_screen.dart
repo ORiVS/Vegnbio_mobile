@@ -6,6 +6,7 @@ import '../../widgets/role_segment.dart';
 import '../../widgets/auth_header.dart';
 import '../../widgets/primary_cta.dart';
 import '../../core/api_service.dart';
+import '../../core/api_paths.dart';
 import '../../models/user.dart';
 import '../home/role_home_router.dart';
 
@@ -46,16 +47,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _restaurantsError = null;
     });
     try {
-      final res = await ApiService.instance.dio.get('/api/restaurants/');
-      final list = (res.data as List)
-          .map((e) => RestaurantLite(
+      final res = await ApiService.instance.dio.get(ApiPaths.restaurantsList);
+      final data = res.data;
+      if (data is! List) {
+        throw Exception('Payload inattendu depuis ${ApiPaths.restaurantsList}');
+      }
+      final list = data
+          .map<RestaurantLite>((e) => RestaurantLite(
         id: (e['id'] as num).toInt(),
         name: (e['name'] ?? '').toString(),
         city: e['city']?.toString(),
       ))
           .toList();
       setState(() => _restaurants = list);
+      print('[REGISTER] restaurants loaded: ${list.length}');
     } catch (e) {
+      print('[REGISTER] load restaurants failed: $e');
       setState(() => _restaurantsError = "Impossible de charger les restaurants");
     } finally {
       setState(() => _loadingRestaurants = false);
@@ -86,6 +93,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               padding: const EdgeInsets.all(16),
               child: Form(
                 key: _formKey,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
                 child: Column(
                   children: [
                     Card(
@@ -100,8 +108,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                     controller: _firstCtrl,
                                     hint: 'Prénom',
                                     icon: Icons.person_outline,
-                                    validator: (v) =>
-                                    v == null || v.isEmpty ? 'Votre prénom est obligatoire' : null,
+                                    validator: (v) => v == null || v.isEmpty ? 'Votre prénom est obligatoire' : null,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -110,8 +117,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                     controller: _lastCtrl,
                                     hint: 'Nom',
                                     icon: Icons.person_outline,
-                                    validator: (v) =>
-                                    v == null || v.isEmpty ? 'Votre nom est obligatoire' : null,
+                                    validator: (v) => v == null || v.isEmpty ? 'Votre nom est obligatoire' : null,
                                   ),
                                 ),
                               ],
@@ -122,8 +128,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               hint: 'Adresse mail',
                               icon: Icons.email_outlined,
                               keyboardType: TextInputType.emailAddress,
-                              validator: (v) =>
-                              v == null || v.isEmpty ? 'Votre adresse mail est obligatoire' : null,
+                              validator: (v) => v == null || v.isEmpty ? 'Votre adresse mail est obligatoire' : null,
                             ),
                             const SizedBox(height: 12),
                             AuthField(
@@ -154,7 +159,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               else if (_restaurantsError != null)
                                 Row(
                                   children: [
-                                    Expanded(child: Text(_restaurantsError!)),
+                                    Expanded(child: Text(_restaurantsError!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
                                     TextButton(
                                       onPressed: _loadRestaurants,
                                       child: const Text('Réessayer'),
@@ -191,8 +196,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       onPressed: () async {
                         if (!_formKey.currentState!.validate()) return;
 
-                        final restaurantId =
-                        _role == 'RESTAURATEUR' ? _selectedRestaurantId : null;
+                        final restaurantId = _role == 'RESTAURATEUR' ? _selectedRestaurantId : null;
                         if (_role == 'RESTAURATEUR' && restaurantId == null) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Veuillez choisir un restaurant')),
@@ -211,14 +215,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                         if (err != null) {
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
-                        } else {
-                          if (context.mounted) {
-                            Navigator.pushNamedAndRemoveUntil(
-                              context,
-                              RoleHomeRouter.route,
-                                  (_) => false,
-                            );
-                          }
+                        } else if (context.mounted) {
+                          Navigator.pushNamedAndRemoveUntil(context, RoleHomeRouter.route, (_) => false);
                         }
                       },
                     ),

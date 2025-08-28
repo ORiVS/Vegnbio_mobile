@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_service.dart';
+import '../core/api_paths.dart';
 import '../models/user.dart';
 
 class AuthState {
@@ -17,12 +18,13 @@ class AuthState {
     bool? loading,
     String? error,
     bool clearError = false,
-  }) => AuthState(
-    isAuthenticated: isAuthenticated ?? this.isAuthenticated,
-    user: user ?? this.user,
-    loading: loading ?? this.loading,
-    error: clearError ? null : (error ?? this.error),
-  );
+  }) =>
+      AuthState(
+        isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+        user: user ?? this.user,
+        loading: loading ?? this.loading,
+        error: clearError ? null : (error ?? this.error),
+      );
 }
 
 String _dioErr(Object e) {
@@ -44,8 +46,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final access = prefs.getString('auth_token');
     print('[AUTH] loadFromStorage access? ${access != null}');
     if (access != null) {
-      state = state.copyWith(isAuthenticated: true);
+      // On ne déclare pas "auth" tant que /me n’a pas confirmé
       await fetchMe();
+      state = state.copyWith(isAuthenticated: state.user != null);
     }
   }
 
@@ -61,7 +64,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(loading: true, clearError: true);
     print('[AUTH] register payload role=$role restaurantId=$restaurantId email=$email');
     try {
-      final resp = await ApiService.instance.dio.post('/api/accounts/register/', data: {
+      final resp = await ApiService.instance.dio.post(ApiPaths.register, data: {
         'email': email,
         'password': password,
         'first_name': firstName,
@@ -86,7 +89,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(loading: true, clearError: true);
     print('[AUTH] login start email=$email');
     try {
-      final res = await ApiService.instance.dio.post('/api/accounts/login/', data: {
+      final res = await ApiService.instance.dio.post(ApiPaths.login, data: {
         'email': email,
         'password': password,
       });
@@ -105,14 +108,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
       await prefs.setString('auth_email', email);
 
-      state = state.copyWith(isAuthenticated: true, loading: false);
+      // On ne marque pas auth=true avant /me
       await fetchMe();
-      print('[AUTH] login success -> isAuthenticated=${state.isAuthenticated}');
-      return null;
+      final ok = state.user != null;
+      state = state.copyWith(isAuthenticated: ok, loading: false);
+      print('[AUTH] login success -> isAuthenticated=$ok');
+      return ok ? null : 'Impossible de récupérer le profil';
     } catch (e, st) {
       print('[AUTH] login failed: ${_dioErr(e)}');
       print(st);
-      state = state.copyWith(loading: false, error: 'Email ou mot de passe invalide');
+      state = state.copyWith(loading: false, isAuthenticated: false, error: 'Email ou mot de passe invalide');
       return 'Email ou mot de passe invalide';
     }
   }
@@ -120,12 +125,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> fetchMe() async {
     print('[AUTH] fetchMe()');
     try {
-      final res = await ApiService.instance.dio.get('/api/accounts/me/');
-      print('[AUTH] /api/accounts/me/ status=${res.statusCode} data=${res.data}');
+      final res = await ApiService.instance.dio.get(ApiPaths.me);
+      print('[AUTH] ${ApiPaths.me} status=${res.statusCode} data=${res.data}');
       state = state.copyWith(user: VegUser.fromJson(res.data));
     } catch (e, st) {
       print('[AUTH] fetchMe failed: ${_dioErr(e)}');
       print(st);
+      // on ne modifie pas isAuthenticated ici, c'est géré à l’appelant
     }
   }
 
