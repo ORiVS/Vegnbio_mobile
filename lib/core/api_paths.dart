@@ -12,11 +12,12 @@ class ApiPaths {
   static String restaurantDetail(int id) => '/api/restaurants/restaurants/$id/';
 
   // ---- Reservations (DefaultRouter) ----
-  // Liste (client voit ses réservations, restaurateur voit selon ta logique)
   static const reservationsList = '/api/restaurants/reservations/';
   static String reservationDetail(int id)  => '/api/restaurants/reservations/$id/';
   static String reservationCancel(int id)  => '/api/restaurants/reservations/$id/cancel/';
   static String reservationModerate(int id)=> '/api/restaurants/reservations/$id/moderate/';
+  // Reservations
+  static const reservations = '/api/restaurants/reservations/';
 
   // ---- Endpoints spécifiques Restaurateur ----
   static String restaurantOwnerReservations(int restaurantId)
@@ -24,4 +25,8 @@ class ApiPaths {
 
   static String restaurantDashboard(int restaurantId)
   => '/api/restaurants/$restaurantId/dashboard/';
+
+  static String restaurantEvenements(int id) =>
+      '/api/restaurants/restaurants/$id/evenements/';
+  
 }

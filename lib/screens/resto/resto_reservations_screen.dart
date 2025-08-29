@@ -42,11 +42,7 @@ class RestoReservationsScreen extends ConsumerWidget {
                       icon: const Icon(Icons.more_vert),
                       onSelected: (v) async {
                         final err = await moderateReservation(r.id, v);
-                        if (err != null) {
-                          ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(err)));
-                        } else {
-                          ref.invalidate(restoReservationsProvider(restoId));
-                        }
+
                       },
                       itemBuilder: (_) => const [
                         PopupMenuItem(value: 'CONFIRMED', child: Text('Confirmer')),

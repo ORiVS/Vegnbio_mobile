@@ -1,3 +1,4 @@
+// lib/models/restaurant.dart
 import 'package:flutter/foundation.dart';
 
 class Room {
@@ -6,19 +7,23 @@ class Room {
   final int capacity;
   Room({required this.id, required this.name, required this.capacity});
 
-  factory Room.fromJson(Map<String, dynamic> j) =>
-      Room(id: (j['id'] as num).toInt(), name: j['name'] ?? '', capacity: (j['capacity'] as num).toInt());
+  factory Room.fromJson(Map<String, dynamic> j) => Room(
+    id: (j['id'] as num).toInt(),
+    name: j['name'] ?? '',
+    capacity: (j['capacity'] as num).toInt(),
+  );
 }
 
 @immutable
 class Restaurant {
   final int id;
   final String name;
-  final String city;
   final String address;
+  final String city;
   final String postalCode;
   final int capacity;
 
+  // Services
   final bool wifi;
   final bool printer;
   final bool memberTrays;
@@ -26,13 +31,23 @@ class Restaurant {
   final bool animationsEnabled;
   final String? animationDay;
 
+  // Horaires (strings "HH:MM:SS")
+  final String openingTimeMonToThu;
+  final String closingTimeMonToThu;
+  final String openingTimeFriday;
+  final String closingTimeFriday;
+  final String openingTimeSaturday;
+  final String closingTimeSaturday;
+  final String openingTimeSunday;
+  final String closingTimeSunday;
+
   final List<Room> rooms;
 
   const Restaurant({
     required this.id,
     required this.name,
-    required this.city,
     required this.address,
+    required this.city,
     required this.postalCode,
     required this.capacity,
     required this.wifi,
@@ -41,14 +56,22 @@ class Restaurant {
     required this.deliveryTrays,
     required this.animationsEnabled,
     this.animationDay,
+    required this.openingTimeMonToThu,
+    required this.closingTimeMonToThu,
+    required this.openingTimeFriday,
+    required this.closingTimeFriday,
+    required this.openingTimeSaturday,
+    required this.closingTimeSaturday,
+    required this.openingTimeSunday,
+    required this.closingTimeSunday,
     this.rooms = const [],
   });
 
   factory Restaurant.fromJson(Map<String, dynamic> j) => Restaurant(
     id: (j['id'] as num).toInt(),
     name: j['name'] ?? '',
-    city: j['city'] ?? '',
     address: j['address'] ?? '',
+    city: j['city'] ?? '',
     postalCode: j['postal_code'] ?? '',
     capacity: (j['capacity'] as num?)?.toInt() ?? 0,
     wifi: j['wifi_available'] == true,
@@ -57,6 +80,16 @@ class Restaurant {
     deliveryTrays: j['delivery_trays_available'] == true,
     animationsEnabled: j['animations_enabled'] == true,
     animationDay: j['animation_day']?.toString(),
+
+    openingTimeMonToThu: (j['opening_time_mon_to_thu'] ?? '09:00:00'),
+    closingTimeMonToThu: (j['closing_time_mon_to_thu'] ?? '23:59:00'),
+    openingTimeFriday: (j['opening_time_friday'] ?? '09:00:00'),
+    closingTimeFriday: (j['closing_time_friday'] ?? '01:00:00'),
+    openingTimeSaturday: (j['opening_time_saturday'] ?? '09:00:00'),
+    closingTimeSaturday: (j['closing_time_saturday'] ?? '05:00:00'),
+    openingTimeSunday: (j['opening_time_sunday'] ?? '11:00:00'),
+    closingTimeSunday: (j['closing_time_sunday'] ?? '23:59:00'),
+
     rooms: (j['rooms'] as List<dynamic>? ?? [])
         .map((e) => Room.fromJson(e as Map<String, dynamic>))
         .toList(),

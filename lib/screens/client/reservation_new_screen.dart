@@ -1,132 +1,227 @@
+// lib/screens/client/reservation_new_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/restaurants_provider.dart';
-import '../../providers/reservations_provider.dart';
-import '../../widgets/primary_cta.dart';
+import 'package:dio/dio.dart';
+import '../../core/api_paths.dart';
+import '../../core/api_service.dart';
+import '../../core/api_error.dart';
+import '../../widgets/api_result_dialogs.dart';
+import '../../theme/app_colors.dart';
+import 'client_shell.dart';
+import 'reservations_list_screen.dart';
 
 class ClientReservationNewScreen extends ConsumerStatefulWidget {
   static const route = '/c/reservation/new';
   const ClientReservationNewScreen({super.key});
+
   @override
   ConsumerState<ClientReservationNewScreen> createState() => _ClientReservationNewScreenState();
 }
 
 class _ClientReservationNewScreenState extends ConsumerState<ClientReservationNewScreen> {
-  final _formKey = GlobalKey<FormState>();
-  DateTime _date = DateTime.now().add(const Duration(days: 1));
-  TimeOfDay _start = const TimeOfDay(hour: 12, minute: 0);
-  TimeOfDay _end = const TimeOfDay(hour: 14, minute: 0);
-  bool _full = false;
-  int? _restaurantId;
-  int? _roomId;
+  DateTime _date = DateTime.now();
+  TimeOfDay? _start;
+  TimeOfDay? _end;
+  bool _loading = false;
+
+  int? restaurantId;
+  int? roomId;
+  bool full = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args = (ModalRoute.of(context)!.settings.arguments as Map?) ?? {};
-    _restaurantId = args['restaurantId'] as int?;
-    _roomId = args['roomId'] as int?;
-    _full = (args['full'] as bool?) ?? false;
+    final args = ModalRoute.of(context)!.settings.arguments as Map?;
+    restaurantId = args?['restaurantId'] as int?;
+    roomId = args?['roomId'] as int?;
+    full = (args?['full'] as bool?) ?? false;
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _date.isBefore(now) ? now : _date,
+      firstDate: now,
+      lastDate: DateTime(now.year + 1),
+    );
+    if (d != null) setState(() => _date = d);
+  }
+
+  Future<void> _pickTime({required bool start}) async {
+    final init = start ? (_start ?? const TimeOfDay(hour: 12, minute: 0)) : (_end ?? const TimeOfDay(hour: 14, minute: 0));
+    final t = await showTimePicker(context: context, initialTime: init);
+    if (t != null) setState(() => start ? _start = t : _end = t);
+  }
+
+  String _fmtDate(DateTime d) => '${d.year.toString().padLeft(4,'0')}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
+  String _fmtTime(TimeOfDay t) => '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}:00';
+
+  Future<void> _submit() async {
+    if (restaurantId == null) {
+      await showErrorDialog(context, error: ApiError(messages: ["Restaurant manquant."]));
+      return;
+    }
+    if (!full && roomId == null) {
+      await showErrorDialog(context, error: ApiError(messages: ["Veuillez choisir une salle ou sélectionnez “restaurant entier”."]));
+      return;
+    }
+    if (_start == null || _end == null) {
+      await showErrorDialog(context, error: ApiError(messages: ["Veuillez choisir une heure de début et de fin."]));
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final payload = {
+        'restaurant': restaurantId,
+        'room': full ? null : roomId,
+        'full_restaurant': full,
+        'date': _fmtDate(_date),
+        'start_time': _fmtTime(_start!),
+        'end_time': _fmtTime(_end!),
+      };
+
+      final res = await ApiService.instance.dio.post(ApiPaths.reservations, data: payload);
+
+      if (!mounted) return;
+      await showSuccessDialog(
+        context,
+        title: 'Réservation créée.',
+        messages: [
+          'Date : ${payload['date']}',
+          'Heure : ${payload['start_time']} → ${payload['end_time']}',
+          if (!full) 'Salle #$roomId' else 'Restaurant entier',
+        ],
+        primaryLabel: 'OK',
+        // Quand l’utilisateur veut juste fermer → on revient à l’écran précédent :
+        onPrimary: () {
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop(); // ferme l'écran de création
+          }
+        },
+
+        secondaryLabel: 'Voir mes réservations',
+        onSecondary: () {
+          // Remplacer l’écran courant par la liste (donc aucun pop derrière)
+          Navigator.pushReplacementNamed(context, ClientShell.route, arguments: {'tab': 1});
+        },
+      );
+
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final err = ApiError.fromDio(e);
+      await showErrorDialog(
+        context,
+        title: 'Réservation impossible.',
+        error: err,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await showErrorDialog(
+        context,
+        title: 'Erreur inattendue.',
+        error: ApiError(messages: [e.toString()]),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final restAsync = _restaurantId != null ? ref.watch(restaurantDetailProvider(_restaurantId!)) : null;
-
+    final title = full ? 'Réserver tout le restaurant' : 'Nouvelle réservation';
     return Scaffold(
-      appBar: AppBar(title: const Text('Nouvelle réservation')),
-      body: SingleChildScrollView(
+      appBar: AppBar(
+        title: Text(title, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w700)),
+        backgroundColor: Colors.white, elevation: 0, iconTheme: const IconThemeData(color: Colors.black),
+      ),
+      body: ListView(
         padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (restAsync != null) ...[
-              restAsync.when(
-                data: (r) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(r.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 10),
-                    SwitchListTile(
-                      title: const Text('Réserver tout le restaurant'),
-                      value: _full,
-                      onChanged: (v) => setState(() => _full = v),
-                    ),
-                    if (!_full)
-                      DropdownButtonFormField<int>(
-                        value: _roomId,
-                        validator: (_) => _roomId == null ? 'Choisissez une salle' : null,
-                        decoration: const InputDecoration(prefixIcon: Icon(Icons.meeting_room), hintText: 'Salle'),
-                        items: r.rooms.map((room) => DropdownMenuItem(value: room.id, child: Text(room.name))).toList(),
-                        onChanged: (v) => setState(() => _roomId = v),
-                      ),
-                    const SizedBox(height: 12),
-                  ],
-                ),
-                loading: () => const LinearProgressIndicator(),
-                error: (e, _) => Text('Erreur: $e'),
+        children: [
+          if (!full) _InfoRow(icon: Icons.meeting_room, label: 'Salle', value: '#$roomId'),
+          _InfoRow(icon: Icons.store_mall_directory, label: 'Restaurant', value: '#$restaurantId'),
+
+          const SizedBox(height: 16),
+          const Text('Date', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          _BoxButton(
+            onTap: _pickDate,
+            child: Row(children: [const Icon(Icons.event), const SizedBox(width: 10), Text(_fmtDate(_date))]),
+          ),
+
+          const SizedBox(height: 16),
+          const Text('Heure de début', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          _BoxButton(
+            onTap: () => _pickTime(start: true),
+            child: Row(children: [const Icon(Icons.access_time), const SizedBox(width: 10), Text(_start == null ? 'Choisir…' : _fmtTime(_start!))]),
+          ),
+
+          const SizedBox(height: 16),
+          const Text('Heure de fin', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          _BoxButton(
+            onTap: () => _pickTime(start: false),
+            child: Row(children: [const Icon(Icons.access_time), const SizedBox(width: 10), Text(_end == null ? 'Choisir…' : _fmtTime(_end!))]),
+          ),
+
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: kPrimaryGreen, foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-            ],
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.event),
-              title: Text('${_date.year}-${_two(_date.month)}-${_two(_date.day)}'),
-              trailing: const Icon(Icons.edit_calendar),
-              onTap: () async {
-                final d = await showDatePicker(
-                  context: context,
-                  initialDate: _date,
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                );
-                if (d != null) setState(() => _date = d);
-              },
+              onPressed: _loading ? null : _submit,
+              child: _loading
+                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Réserver'),
             ),
-            const SizedBox(height: 8),
-            _timeTile('Heure de début', _start, (t) => setState(() => _start = t)),
-            _timeTile('Heure de fin', _end, (t) => setState(() => _end = t)),
-            const SizedBox(height: 16),
-            PrimaryCta(
-              text: 'Confirmer',
-              onPressed: () async {
-                if (!_formKey.currentState!.validate()) return;
-                final err = await createReservation(
-                  restaurantId: _restaurantId,
-                  roomId: _roomId,
-                  date: '${_date.year}-${_two(_date.month)}-${_two(_date.day)}',
-                  startTime: '${_two(_start.hour)}:${_two(_start.minute)}',
-                  endTime: '${_two(_end.hour)}:${_two(_end.minute)}',
-                  fullRestaurant: _full,
-                );
-                if (err != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
-                } else {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text('Réservation créée ✅')));
-                    Navigator.pop(context);
-                  }
-                }
-              },
-            )
-          ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? value;
+  const _InfoRow({required this.icon, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Icon(icon, color: kPrimaryGreenDark),
+      const SizedBox(width: 10),
+      Text('$label : ', style: const TextStyle(fontWeight: FontWeight.w600)),
+      Expanded(child: Text(value ?? '-', overflow: TextOverflow.ellipsis)),
+    ]);
+  }
+}
+
+class _BoxButton extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  const _BoxButton({required this.child, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF7F7F8),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+          child: child,
         ),
       ),
     );
   }
-
-  Widget _timeTile(String label, TimeOfDay value, ValueChanged<TimeOfDay> onChanged) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: const Icon(Icons.access_time),
-      title: Text('$label: ${_two(value.hour)}:${_two(value.minute)}'),
-      trailing: const Icon(Icons.edit),
-      onTap: () async {
-        final t = await showTimePicker(context: context, initialTime: value);
-        if (t != null) onChanged(t);
-      },
-    );
-  }
-
-  String _two(int n) => n.toString().padLeft(2, '0');
 }

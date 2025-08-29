@@ -1,26 +1,41 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
+
 import '../core/api_service.dart';
 import '../core/api_paths.dart';
+import '../core/api_error.dart';
 import '../models/reservation.dart';
 
 List<dynamic> _extractList(dynamic data) {
   if (data is List) return data;
   if (data is Map && data['results'] is List) return data['results'] as List;
+  // on tolère aussi un objet "count/results" DRF
+  if (data is Map && data['count'] is int && data['results'] is List) {
+    return data['results'] as List;
+  }
   throw Exception('Réponse inattendue depuis ${ApiPaths.reservationsList}');
 }
 
-// ---- Mes réservations (client) ----
+/// ---- Mes réservations (client) ----
+/// GET /api/restaurants/reservations/   (le ViewSet filtre côté serveur)
 final myReservationsProvider = FutureProvider<List<Reservation>>((ref) async {
-  print('[RESAS] GET ${ApiPaths.reservationsList}');
   final res = await ApiService.instance.dio.get(ApiPaths.reservationsList);
   final list = _extractList(res.data);
-  final parsed = list.map((e) => Reservation.fromJson(e as Map<String, dynamic>)).toList();
-  print('[RESAS] loaded=${parsed.length}');
-  return parsed;
+  return list.map((e) => Reservation.fromJson(e as Map<String, dynamic>)).toList();
 });
 
-// ---- Créer une réservation ----
-Future<String?> createReservation({
+/// ---- Réservations d’un restaurant (restaurateur propriétaire) ----
+final restoReservationsProvider =
+FutureProvider.family<List<Reservation>, int>((ref, restaurantId) async {
+  final url = ApiPaths.restaurantOwnerReservations(restaurantId);
+  final res = await ApiService.instance.dio.get(url);
+  final list = _extractList(res.data);
+  return list.map((e) => Reservation.fromJson(e as Map<String, dynamic>)).toList();
+});
+
+/// ---- Créer une réservation ----
+/// Retourne `null` si OK, sinon `ApiError` prêt pour showErrorDialog(...)
+Future<ApiError?> createReservation({
   required int? restaurantId,
   required int? roomId,
   required String date,       // YYYY-MM-DD
@@ -37,53 +52,38 @@ Future<String?> createReservation({
       if (fullRestaurant) 'restaurant': restaurantId,
       if (!fullRestaurant) 'room': roomId,
     };
-    print('[RESAS] POST ${ApiPaths.reservationsList} payload=$payload');
-    final res = await ApiService.instance.dio.post(ApiPaths.reservationsList, data: payload);
-    final ok = res.statusCode == 201 || res.statusCode == 200;
-    print('[RESAS] create status=${res.statusCode} ok=$ok body=${res.data}');
-    return ok ? null : 'Réservation impossible';
+    await ApiService.instance.dio.post(ApiPaths.reservationsList, data: payload);
+    return null;
+  } on DioException catch (e) {
+    return ApiError.fromDio(e);
   } catch (e) {
-    print('[RESAS] create error=$e');
-    return e.toString();
+    return ApiError(messages: [e.toString()]);
   }
 }
 
-// ---- Annuler (client ou restaurateur) ----
-Future<String?> cancelReservation(int id) async {
+/// ---- Annuler (client ou restaurateur) ----
+Future<ApiError?> cancelReservation(int id) async {
   try {
-    final url = ApiPaths.reservationCancel(id);
-    print('[RESAS] POST $url');
-    final res = await ApiService.instance.dio.post(url);
-    print('[RESAS] cancel status=${res.statusCode} body=${res.data}');
+    await ApiService.instance.dio.post(ApiPaths.reservationCancel(id));
     return null;
+  } on DioException catch (e) {
+    return ApiError.fromDio(e);
   } catch (e) {
-    print('[RESAS] cancel error=$e');
-    return e.toString();
+    return ApiError(messages: [e.toString()]);
   }
 }
 
-// ---- Réservations d’un restaurant (restaurateur propriétaire) ----
-final restoReservationsProvider =
-FutureProvider.family<List<Reservation>, int>((ref, restaurantId) async {
-  final url = ApiPaths.restaurantOwnerReservations(restaurantId);
-  print('[RESAS] GET $url');
-  final res = await ApiService.instance.dio.get(url);
-  final list = _extractList(res.data);
-  final parsed = list.map((e) => Reservation.fromJson(e as Map<String, dynamic>)).toList();
-  print('[RESAS] owner list loaded=${parsed.length}');
-  return parsed;
-});
-
-// ---- Modération (restaurateur) ----
-Future<String?> moderateReservation(int id, String newStatus) async {
+/// ---- Modération (restaurateur) ----
+Future<ApiError?> moderateReservation(int id, String newStatus) async {
   try {
-    final url = ApiPaths.reservationModerate(id);
-    print('[RESAS] POST $url body={status: $newStatus}');
-    final res = await ApiService.instance.dio.post(url, data: {'status': newStatus});
-    print('[RESAS] moderate status=${res.statusCode} body=${res.data}');
+    await ApiService.instance.dio.post(
+      ApiPaths.reservationModerate(id),
+      data: {'status': newStatus},
+    );
     return null;
+  } on DioException catch (e) {
+    return ApiError.fromDio(e);
   } catch (e) {
-    print('[RESAS] moderate error=$e');
-    return e.toString();
+    return ApiError(messages: [e.toString()]);
   }
 }
