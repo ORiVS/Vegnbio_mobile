@@ -28,5 +28,11 @@ class ApiPaths {
 
   static String restaurantEvenements(int id) =>
       '/api/restaurants/restaurants/$id/evenements/';
-  
+
+  // Évènements
+  static const events = '/api/restaurants/evenements/';
+  static String eventDetail(int id) => '/api/restaurants/evenements/$id/';
+  static String eventRegister(int id) => '/api/restaurants/evenements/$id/register/';
+  static String eventUnregister(int id) => '/api/restaurants/evenements/$id/unregister/';
+  static String eventRegistrations(int id) => '/api/restaurants/evenements/$id/registrations/';
 }

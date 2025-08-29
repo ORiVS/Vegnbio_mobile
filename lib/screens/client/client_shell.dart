@@ -2,9 +2,9 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 
-// Accueil (liste restos)
-import 'restaurants_list_screen.dart'; // doit exposer ClientRestaurantsScreen
-// Réservations (onglet 2)
+
+import 'events_list_screen.dart';
+import 'restaurants_list_screen.dart';
 import 'reservations_list_screen.dart';
 
 class EvenementsScreen extends StatelessWidget {
@@ -24,10 +24,7 @@ class ProfilScreen extends StatelessWidget {
 class ClientShell extends StatefulWidget {
   static const route = '/client';
 
-  /// Optionnel si tu pousses avec un MaterialPageRoute:
-  /// Navigator.push(context, MaterialPageRoute(
-  ///   builder: (_) => const ClientShell(initialIndex: 1),
-  /// ));
+
   final int? initialIndex;
 
   const ClientShell({super.key, this.initialIndex});
@@ -43,7 +40,7 @@ class _ClientShellState extends State<ClientShell> {
   final _pages = const <Widget>[
     ClientRestaurantsScreen(),   // 0 : Accueil
     ClientReservationsScreen(),  // 1 : Réservations
-    EvenementsScreen(),          // 2 : Événements
+    ClientEventsScreen(),          // 2 : Événements
     ProfilScreen(),              // 3 : Profil
   ];
 

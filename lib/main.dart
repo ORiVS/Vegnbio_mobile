@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:vegnbio_app/screens/client/event_detail_screen.dart';
 
 import 'core/theme.dart';
 import 'providers/auth_provider.dart';
@@ -49,6 +50,8 @@ class VegnBioApp extends StatelessWidget {
         ClientRestaurantDetailScreen.route: (_) => const ClientRestaurantDetailScreen(),
         ClientReservationNewScreen.route: (_) => const ClientReservationNewScreen(),
         ClientReservationsScreen.route: (_) => const ClientReservationsScreen(),
+        EventDetailScreen.route: (_) => const EventDetailScreen(),
+
 
         // Restaurateur
         RestoShell.route: (_) => const RestoShell(),
