@@ -1,38 +1,80 @@
-class MenuItem {
-  final String id;
-  final String title;
-  final String description;
-  final List<String> allergens; // ex: ['gluten', 'arachides']
-  final double price;
-  final int kcal;
-  final double rating; // 0..5
-  final int prepMinutes; // ex: 45
-  final String imageUrl;
-  final bool isVegan;
+import 'package:flutter/foundation.dart';
+import 'dish.dart';
 
-  MenuItem({
+enum CourseType { entree, plat, dessert, boisson, unknown }
+
+CourseType courseFromStr(String s) {
+  switch (s.toUpperCase()) {
+    case 'ENTREE': return CourseType.entree;
+    case 'PLAT': return CourseType.plat;
+    case 'DESSERT': return CourseType.dessert;
+    case 'BOISSON': return CourseType.boisson;
+    default: return CourseType.unknown;
+  }
+}
+
+@immutable
+class MenuItem {
+  final int id;
+  final CourseType course;
+  final int? dishId;
+  final Dish? dish; // si le backend renvoie l’objet
+
+  const MenuItem({required this.id, required this.course, this.dishId, this.dish});
+
+  factory MenuItem.fromJson(Map<String, dynamic> j) {
+    final rawDish = j['dish'];
+    Dish? dishObj;
+    int? dishId;
+
+    if (rawDish is Map<String, dynamic>) {
+      dishObj = Dish.fromJson(rawDish);
+      dishId = dishObj.id;
+    } else if (rawDish is num) {
+      dishId = rawDish.toInt();
+    }
+
+    return MenuItem(
+      id: (j['id'] as num).toInt(),
+      course: courseFromStr(j['course_type']?.toString() ?? ''),
+      dishId: dishId,
+      dish: dishObj,
+    );
+  }
+}
+
+@immutable
+class Menu {
+  final int id;
+  final String title;
+  final String? description;
+  final String startDate; // YYYY-MM-DD
+  final String endDate;   // YYYY-MM-DD
+  final List<int> restaurants;
+  final bool isPublished;
+  final List<MenuItem> items;
+
+  const Menu({
     required this.id,
     required this.title,
     required this.description,
-    required this.allergens,
-    required this.price,
-    required this.kcal,
-    required this.rating,
-    required this.prepMinutes,
-    required this.imageUrl,
-    this.isVegan = true,
+    required this.startDate,
+    required this.endDate,
+    required this.restaurants,
+    required this.isPublished,
+    required this.items,
   });
 
-  factory MenuItem.fromJson(Map<String, dynamic> json) => MenuItem(
-    id: json['id'].toString(),
-    title: json['title'] ?? json['name'] ?? '',
-    description: json['description'] ?? '',
-    allergens: (json['allergens'] as List?)?.map((e) => e.toString()).toList() ?? [],
-    price: (json['price'] as num?)?.toDouble() ?? 0,
-    kcal: (json['kcal'] as num?)?.toInt() ?? 0,
-    rating: (json['rating'] as num?)?.toDouble() ?? 0,
-    prepMinutes: (json['prep_minutes'] as num?)?.toInt() ?? 0,
-    imageUrl: json['image'] ?? json['image_url'] ?? '',
-    isVegan: json['is_vegan'] ?? true,
+  factory Menu.fromJson(Map<String, dynamic> j) => Menu(
+    id: (j['id'] as num).toInt(),
+    title: j['title']?.toString() ?? '',
+    description: j['description']?.toString(),
+    startDate: j['start_date']?.toString() ?? '',
+    endDate: j['end_date']?.toString() ?? '',
+    restaurants: (j['restaurants'] as List<dynamic>? ?? []).map((e) => (e as num).toInt()).toList(),
+    isPublished: j['is_published'] == true,
+    items: (j['items'] as List<dynamic>? ?? [])
+        .map((e) => MenuItem.fromJson(e as Map<String, dynamic>))
+        .toList(),
   );
 }

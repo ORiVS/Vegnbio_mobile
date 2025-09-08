@@ -35,4 +35,17 @@ class ApiPaths {
   static String eventRegister(int id) => '/api/restaurants/evenements/$id/register/';
   static String eventUnregister(int id) => '/api/restaurants/evenements/$id/unregister/';
   static String eventRegistrations(int id) => '/api/restaurants/evenements/$id/registrations/';
+
+
+  static const menus = '/api/menu/menus/';
+  static const dishes = '/api/menu/dishes/';
+  static String dish(int id) => '$dishes$id/';
+  static const dishAvailabilities = '/api/menu/dish-availability/';
+
+  static String dishAvailabilityQuery({
+    required int restaurantId,
+    required int dishId,
+    required String date, // YYYY-MM-DD
+  }) =>
+      '$dishAvailabilities?restaurant=$restaurantId&dish=$dishId&date=$date';
 }
