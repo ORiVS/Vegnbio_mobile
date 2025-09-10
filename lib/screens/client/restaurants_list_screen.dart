@@ -6,6 +6,10 @@ import '../../providers/restaurants_provider.dart';
 import '../../theme/app_colors.dart';
 import 'restaurant_detail_screen.dart';
 
+// ⬇️ imports pour le panier
+import '../../providers/cart_provider.dart';
+import '../cart/cart_screen.dart';
+
 class ClientRestaurantsScreen extends ConsumerWidget {
   static const route = '/c/restaurants';
   const ClientRestaurantsScreen({super.key});
@@ -20,16 +24,26 @@ class ClientRestaurantsScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "RESTAURANTS",
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: kPrimaryGreenDark,
-                letterSpacing: 1.2,
-              ),
+            // ====== EN-TÊTE AVEC ICÔNE PANIER ======
+            Row(
+              children: [
+                const Text(
+                  "RESTAURANTS",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: kPrimaryGreenDark,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const Spacer(),
+                _CartIcon(
+                  onPressed: () => Navigator.pushNamed(context, CartScreen.route),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
+
             const _SearchField(),
             const SizedBox(height: 16),
 
@@ -68,14 +82,60 @@ class ClientRestaurantsScreen extends ConsumerWidget {
                     },
                   );
                 },
-                loading: () =>
-                const Center(child: CircularProgressIndicator()),
+                loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(child: Text('Erreur : $e')),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CartIcon extends ConsumerWidget {
+  final VoidCallback onPressed;
+  const _CartIcon({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cartAsync = ref.watch(cartProvider);
+    final int count = cartAsync.maybeWhen(
+      data: (c) => c.itemsCount,
+      orElse: () => 0,
+    );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          tooltip: 'Panier',
+          onPressed: onPressed,
+          icon: const Icon(Icons.shopping_cart_outlined),
+        ),
+        if (count > 0)
+          Positioned(
+            right: 6,
+            top: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              constraints: const BoxConstraints(minWidth: 18),
+              child: Text(
+                count > 99 ? '99+' : '$count',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -107,10 +167,9 @@ class _SearchFieldState extends State<_SearchField> {
           hintText: 'Rechercher un restaurant…',
           prefixIcon: const Icon(Icons.search),
           filled: true,
-          isDense: true, // réduit la hauteur
+          isDense: true,
           fillColor: const Color(0xFFF7F7F8),
-          contentPadding:
-          const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide.none,
@@ -130,8 +189,7 @@ class _SearchState extends InheritedWidget {
       context.dependOnInheritedWidgetOfExactType<_SearchState>();
 
   @override
-  bool updateShouldNotify(covariant _SearchState oldWidget) =>
-      query != oldWidget.query;
+  bool updateShouldNotify(covariant _SearchState oldWidget) => query != oldWidget.query;
 }
 
 class _RestaurantCard extends StatelessWidget {
@@ -169,9 +227,7 @@ class _RestaurantCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(r.name,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text(r.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 4),
                   Text(
                     r.address.isNotEmpty ? r.address : r.city,

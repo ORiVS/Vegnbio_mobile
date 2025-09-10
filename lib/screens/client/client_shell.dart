@@ -2,31 +2,14 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 
-
 import 'events_list_screen.dart';
 import 'restaurants_list_screen.dart';
 import 'reservations_list_screen.dart';
-
-class EvenementsScreen extends StatelessWidget {
-  const EvenementsScreen({super.key});
-  @override
-  Widget build(BuildContext context) =>
-      const Center(child: Text('Événements'));
-}
-
-class ProfilScreen extends StatelessWidget {
-  const ProfilScreen({super.key});
-  @override
-  Widget build(BuildContext context) =>
-      const Center(child: Text('Mon profil'));
-}
+import 'profile/profile_screen.dart'; // <— AJOUT : ton vrai écran profil
 
 class ClientShell extends StatefulWidget {
   static const route = '/client';
-
-
   final int? initialIndex;
-
   const ClientShell({super.key, this.initialIndex});
 
   @override
@@ -40,8 +23,8 @@ class _ClientShellState extends State<ClientShell> {
   final _pages = const <Widget>[
     ClientRestaurantsScreen(),   // 0 : Accueil
     ClientReservationsScreen(),  // 1 : Réservations
-    ClientEventsScreen(),          // 2 : Événements
-    ProfilScreen(),              // 3 : Profil
+    ClientEventsScreen(),        // 2 : Événements
+    ClientProfileScreen(),       // 3 : Profil  <-- ICI, remplace ProfilScreen() par ClientProfileScreen()
   ];
 
   @override
@@ -49,10 +32,7 @@ class _ClientShellState extends State<ClientShell> {
     super.didChangeDependencies();
     if (_initFromArgs) return;
 
-    // 1) priorité au paramètre du constructeur
     int? tab = widget.initialIndex;
-
-    // 2) sinon, on regarde les arguments de la route nommée
     final args = ModalRoute.of(context)?.settings.arguments;
     if (tab == null) {
       if (args is int) tab = args;
@@ -68,10 +48,7 @@ class _ClientShellState extends State<ClientShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // On garde l'état des pages (scroll/resto/resas) entre les onglets
-      body: SafeArea(
-        child: IndexedStack(index: _index, children: _pages),
-      ),
+      body: SafeArea(child: IndexedStack(index: _index, children: _pages)),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: ClipRRect(

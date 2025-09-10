@@ -5,6 +5,9 @@ class ApiPaths {
   static const me           = '/api/accounts/me/';
   static const tokenRefresh = '/api/accounts/token/refresh/';
 
+  static const meUpdate = '/api/accounts/me/update/';
+
+
   // ---- Restaurants (DefaultRouter) ----
   // Racine /api/restaurants/ renvoie un index de liens.
   // La vraie liste est /api/restaurants/restaurants/
@@ -36,6 +39,19 @@ class ApiPaths {
   static String eventUnregister(int id) => '/api/restaurants/evenements/$id/unregister/';
   static String eventRegistrations(int id) => '/api/restaurants/evenements/$id/registrations/';
 
+
+
+  // Panier / Commandes
+  static const cart        = '/api/orders/cart/';       // GET/POST/DELETE
+  static const checkout    = '/api/orders/checkout/';   // POST
+  static const ordersList  = '/api/orders/';            // GET
+  static const orderStatus = '/api/orders/{id}/status/';// GET/PATCH
+  static const slots       = '/api/orders/slots/';      // GET
+
+  // Fidélité
+  static const loyaltyPoints       = '/api/fidelite/points/';
+  static const loyaltyTransactions = '/api/fidelite/transactions/';
+  static const loyaltyJoin         = '/api/fidelite/join/';
 
   static const menus = '/api/menu/menus/';
   static const dishes = '/api/menu/dishes/';

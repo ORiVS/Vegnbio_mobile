@@ -23,6 +23,16 @@ import 'screens/resto/resto_shell.dart';
 import 'screens/resto/resto_dashboard_screen.dart';
 import 'screens/resto/resto_reservations_screen.dart';
 
+import 'screens/client/profile/profile_screen.dart';
+import 'screens/client/profile/profile_loyalty_screen.dart';
+import 'screens/client/profile/profile_edit_screen.dart';
+import 'screens/client/profile/profile_order_history_screen.dart';
+import 'screens/client/profile/profile_settings_screen.dart';
+
+import 'screens/cart/cart_screen.dart';
+import 'screens/cart/checkout_screen.dart';
+import 'screens/cart/order_confirmation_screen.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Charge .env (contient API_BASE_URL). Tu peux faire ".env.prod" selon build.
@@ -58,12 +68,20 @@ class VegnBioApp extends StatelessWidget {
         ClientRestaurantMenuScreen.route: (_) => const ClientRestaurantMenuScreen(),
         DishDetailScreen.route: (_) => const DishDetailScreen(),
 
-
+        ClientProfileScreen.route: (_) => const ClientProfileScreen(),
+        ProfileLoyaltyScreen.route: (_) => const ProfileLoyaltyScreen(),
+        ProfileEditScreen.route: (_) => const ProfileEditScreen(),
+        ProfileOrderHistoryScreen.route: (_) => const ProfileOrderHistoryScreen(),
+        ProfileSettingsScreen.route: (_) => const ProfileSettingsScreen(),
 
         // Restaurateur
         RestoShell.route: (_) => const RestoShell(),
         RestoDashboardScreen.route: (_) => const RestoDashboardScreen(),
         RestoReservationsScreen.route: (_) => const RestoReservationsScreen(),
+
+        CartScreen.route: (_) => const CartScreen(),
+        CheckoutScreen.route: (_) => const CheckoutScreen(),
+        OrderConfirmationScreen.route: (_) => const OrderConfirmationScreen(),
 
 
         // Auth

@@ -5,6 +5,8 @@ import '../../theme/app_colors.dart';
 import '../../widgets/allergen_chip.dart';
 import '../../widgets/dish_avatar.dart';
 import '../../providers/menu_providers.dart';
+import '../../core/api_service.dart';
+import '../../core/api_paths.dart';
 
 class DishDetailScreen extends ConsumerWidget {
   static const route = '/c/dish';
@@ -26,6 +28,30 @@ class DishDetailScreen extends ConsumerWidget {
     final avail = ref.watch(dishAvailableTodayProvider(
       (restaurantId: restaurantId, dishId: dish.id, date: date),
     ));
+
+    // Bouton actif seulement si dispo connue et ok
+    final canAdd = avail.maybeWhen(data: (ok) => ok, orElse: () => false);
+
+    Future<void> _addToCart() async {
+      try {
+        await ApiService.instance.dio.post(ApiPaths.cart, data: {
+          'external_item_id': 'DISH-${dish.id}',  // identifiant snapshot
+          'name': dish.name,
+          'unit_price': dish.price,               // double -> DRF Decimal ok
+          'quantity': 1,                          // quantité par défaut
+        });
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ajouté au panier')),
+        );
+        // TODO (plus tard) : ref.invalidate(cartProvider);
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossible d’ajouter au panier')),
+        );
+      }
+    }
 
     return Scaffold(
       appBar: AppBar(leading: const BackButton(color: Colors.black), backgroundColor: Colors.white, elevation: 0),
@@ -63,8 +89,7 @@ class DishDetailScreen extends ConsumerWidget {
                 ],
               );
             },
-            loading: () => const SizedBox(
-                height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+            loading: () => const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
             error: (e, _) => Text('Dispo inconnue: $e', style: const TextStyle(color: Colors.red)),
           ),
 
@@ -81,9 +106,30 @@ class DishDetailScreen extends ConsumerWidget {
           if (dish.allergens.isEmpty)
             Text('Aucun allergène renseigné.', style: TextStyle(color: Colors.grey.shade700))
           else
-            Wrap(spacing: 6, runSpacing: -6,
-                children: dish.allergens.map((a) => AllergenChip(a)).toList()),
+            Wrap(
+              spacing: 6, runSpacing: -6,
+              children: dish.allergens.map((a) => AllergenChip(a)).toList(),
+            ),
         ],
+      ),
+
+      // === BOUTON VERT FIXE EN BAS ===
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: canAdd ? _addToCart : null,
+            icon: const Icon(Icons.add_shopping_cart),
+            label: Text(canAdd ? 'Ajouter au panier' : 'Indisponible aujourd’hui'),
+            style: FilledButton.styleFrom(
+              backgroundColor: kPrimaryGreenDark,      // ton vert
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ),
       ),
     );
   }
