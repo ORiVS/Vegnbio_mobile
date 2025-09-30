@@ -48,6 +48,23 @@ class ApiPaths {
   static const orderStatus = '/api/orders/{id}/status/';// GET/PATCH
   static const slots       = '/api/orders/slots/';      // GET
 
+  // ====== market ======
+  static const supplierOffers  = '/api/market/offers/';
+  static const supplierReviews = '/api/market/reviews/';
+  static const supplierReports = '/api/market/reports/';
+  static const supplierComments = '/api/market/comments/';
+
+  // actions sur une offre (suffixe {id}/action/)
+  static String supplierOfferPublish(int id) => '$supplierOffers$id/publish/';
+  static String supplierOfferUnlist(int id) => '$supplierOffers$id/unlist/';
+  static String supplierOfferDraft(int id)  => '$supplierOffers$id/draft/';
+  static String supplierOfferFlag(int id)   => '$supplierOffers$id/flag/';
+  static String supplierOffer(int id)       => '$supplierOffers$id/';
+
+  // compare ?ids=1,2,3
+  static String supplierOffersCompare(List<int> ids) =>
+      '$supplierOffers' 'compare/?ids=${ids.join(",")}';
+
   // Fidélité
   static const loyaltyPoints       = '/api/fidelite/points/';
   static const loyaltyTransactions = '/api/fidelite/transactions/';

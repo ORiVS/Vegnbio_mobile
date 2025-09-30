@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/auth_provider.dart';
 import '../client/client_shell.dart';
 import '../resto/resto_shell.dart';
+import '../supplier/supplier_shell.dart';
 
 class RoleHomeRouter extends ConsumerWidget {
   static const route = '/home';
@@ -20,15 +21,13 @@ class RoleHomeRouter extends ConsumerWidget {
     final role = st.user!.role;
     switch (role) {
       case 'CLIENT':
-        return const ClientShell(); // ← corrige ici
+        return const ClientShell();
       case 'RESTAURATEUR':
         return const RestoShell();
       case 'FOURNISSEUR':
-        return const Scaffold(body: Center(child: Text('Accueil Fournisseur (à venir)')));
-      case 'ADMIN':
-        return const Scaffold(body: Center(child: Text('Accueil Admin (à venir)')));
+        return const SupplierShell();
       default:
-        return const ClientShell(); // ← corrige ici
+        return const ClientShell();
     }
   }
 }

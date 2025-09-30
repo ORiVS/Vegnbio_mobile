@@ -27,8 +27,8 @@ class ApiService {
   late final Dio dio = Dio(
     BaseOptions(
       baseUrl: baseUrl, // ⚠️ sans /api ici (tu mets /api/... dans les chemins).
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 25),
+      connectTimeout: const Duration(seconds: 60),
+      receiveTimeout: const Duration(seconds: 60),
       headers: {'Content-Type': 'application/json'},
     ),
   )

@@ -33,6 +33,14 @@ import 'screens/cart/cart_screen.dart';
 import 'screens/cart/checkout_screen.dart';
 import 'screens/cart/order_confirmation_screen.dart';
 
+import 'screens/supplier/supplier_shell.dart';
+import 'screens/supplier/catalog/supplier_catalog_screen.dart';
+import 'screens/supplier/catalog/supplier_offer_form_screen.dart';
+import 'screens/supplier/catalog/supplier_offer_detail_screen.dart';
+import 'screens/supplier/reviews/supplier_reviews_screen.dart';
+import 'screens/supplier/reviews/supplier_review_detail_screen.dart';
+import 'screens/supplier/profile/supplier_profile_screen.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Charge .env (contient API_BASE_URL). Tu peux faire ".env.prod" selon build.
@@ -82,6 +90,16 @@ class VegnBioApp extends StatelessWidget {
         CartScreen.route: (_) => const CartScreen(),
         CheckoutScreen.route: (_) => const CheckoutScreen(),
         OrderConfirmationScreen.route: (_) => const OrderConfirmationScreen(),
+
+        SupplierShell.route: (_) => const SupplierShell(),
+
+        SupplierOfferFormScreen.route: (_) => const SupplierOfferFormScreen(),
+        SupplierOfferDetailScreen.route: (_) => const SupplierOfferDetailScreen(),
+
+        // (les 2 suivants sont déjà affichés dans le shell mais utiles pour navigation directe)
+        '/supplier/reviews': (_) => const SupplierReviewsScreen(),
+        SupplierReviewDetailScreen.route: (_) => const SupplierReviewDetailScreen(),
+        '/supplier/profile': (_) => const SupplierProfileScreen(),
 
 
         // Auth
