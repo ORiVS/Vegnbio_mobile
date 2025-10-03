@@ -1,5 +1,8 @@
 class SupplierOffer {
   final int id;
+
+  final int supplierId;
+
   final String productName;
   final String? description;
   final bool isBio;
@@ -18,6 +21,7 @@ class SupplierOffer {
 
   SupplierOffer({
     required this.id,
+    required this.supplierId, // ✅
     required this.productName,
     required this.description,
     required this.isBio,
@@ -37,20 +41,33 @@ class SupplierOffer {
 
   factory SupplierOffer.fromJson(Map<String, dynamic> j) => SupplierOffer(
     id: (j['id'] as num).toInt(),
+
+    supplierId: (j['supplier_id'] as num?)?.toInt() ?? 0,
+
     productName: j['product_name'] ?? '',
     description: j['description'],
     isBio: j['is_bio'] == true,
     producerName: j['producer_name'],
     region: j['region'] ?? '',
-    allergens: ((j['allergens'] as List?) ?? []).map((e) => (e as num).toInt()).toList(),
+    allergens: ((j['allergens'] as List?) ?? [])
+        .map((e) => (e as num).toInt())
+        .toList(),
     unit: j['unit'] ?? 'kg',
-    price: j['price'].toString(),
-    minOrderQty: j['min_order_qty'].toString(),
-    stockQty: j['stock_qty'].toString(),
-    availableFrom: j['available_from'] != null ? DateTime.parse(j['available_from']) : null,
-    availableTo: j['available_to'] != null ? DateTime.parse(j['available_to']) : null,
+    price: (j['price'] ?? '').toString(),
+    minOrderQty: (j['min_order_qty'] ?? '').toString(),
+    stockQty: (j['stock_qty'] ?? '').toString(),
+    availableFrom: j['available_from'] != null && (j['available_from'] as String).isNotEmpty
+        ? DateTime.parse(j['available_from'])
+        : null,
+    availableTo: j['available_to'] != null && (j['available_to'] as String).isNotEmpty
+        ? DateTime.parse(j['available_to'])
+        : null,
     status: j['status'] ?? 'DRAFT',
-    avgRating: j['avg_rating'] == null ? null : (j['avg_rating'] as num).toDouble(),
+    avgRating: j['avg_rating'] == null
+        ? null
+        : (j['avg_rating'] is num
+        ? (j['avg_rating'] as num).toDouble()
+        : double.tryParse(j['avg_rating'].toString())),
     createdAt: DateTime.parse(j['created_at']),
   );
 }

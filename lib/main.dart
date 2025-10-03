@@ -1,9 +1,7 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:vegnbio_app/screens/client/dish_detail_screen.dart';
-import 'package:vegnbio_app/screens/client/event_detail_screen.dart';
-import 'package:vegnbio_app/screens/client/restaurant_menu_screen.dart';
 
 import 'core/theme.dart';
 import 'providers/auth_provider.dart';
@@ -14,25 +12,29 @@ import 'screens/auth/register_screen.dart';
 
 // Router par rôle + shells
 import 'screens/home/role_home_router.dart';
+
+// Client
 import 'screens/client/client_shell.dart';
 import 'screens/client/restaurants_list_screen.dart';
 import 'screens/client/restaurant_detail_screen.dart';
 import 'screens/client/reservation_new_screen.dart';
 import 'screens/client/reservations_list_screen.dart';
+import 'screens/client/dish_detail_screen.dart';
+import 'screens/client/event_detail_screen.dart';
+import 'screens/client/restaurant_menu_screen.dart';
+
 import 'screens/resto/resto_shell.dart';
 import 'screens/resto/resto_dashboard_screen.dart';
 import 'screens/resto/resto_reservations_screen.dart';
 
+// Client profile
 import 'screens/client/profile/profile_screen.dart';
 import 'screens/client/profile/profile_loyalty_screen.dart';
 import 'screens/client/profile/profile_edit_screen.dart';
 import 'screens/client/profile/profile_order_history_screen.dart';
 import 'screens/client/profile/profile_settings_screen.dart';
 
-import 'screens/cart/cart_screen.dart';
-import 'screens/cart/checkout_screen.dart';
-import 'screens/cart/order_confirmation_screen.dart';
-
+// Supplier
 import 'screens/supplier/supplier_shell.dart';
 import 'screens/supplier/catalog/supplier_catalog_screen.dart';
 import 'screens/supplier/catalog/supplier_offer_form_screen.dart';
@@ -40,6 +42,9 @@ import 'screens/supplier/catalog/supplier_offer_detail_screen.dart';
 import 'screens/supplier/reviews/supplier_reviews_screen.dart';
 import 'screens/supplier/reviews/supplier_review_detail_screen.dart';
 import 'screens/supplier/profile/supplier_profile_screen.dart';
+import 'screens/supplier/inbox/supplier_inbox_screen.dart';
+import 'screens/supplier/inbox/supplier_order_detail_screen.dart';
+import 'screens/supplier/inbox/supplier_order_review_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,11 +62,10 @@ class VegnBioApp extends StatelessWidget {
       title: "Veg'N Bio",
       theme: appTheme,
       debugShowCheckedModeBanner: false,
-      // ✅ AuthGate décide dynamiquement (Login vs Home) selon l'état provider.
-      home: const _AuthGate(),
+      home: const _AuthGate(), // AuthGate décide dynamiquement (Login vs Home)
 
-      // Routes nommées
       routes: {
+        // Router rôle
         RoleHomeRouter.route: (_) => const RoleHomeRouter(),
 
         // Client
@@ -72,9 +76,7 @@ class VegnBioApp extends StatelessWidget {
         ClientReservationsScreen.route: (_) => const ClientReservationsScreen(),
         EventDetailScreen.route: (_) => const EventDetailScreen(),
         DishDetailScreen.route: (_) => const DishDetailScreen(),
-
         ClientRestaurantMenuScreen.route: (_) => const ClientRestaurantMenuScreen(),
-        DishDetailScreen.route: (_) => const DishDetailScreen(),
 
         ClientProfileScreen.route: (_) => const ClientProfileScreen(),
         ProfileLoyaltyScreen.route: (_) => const ProfileLoyaltyScreen(),
@@ -87,20 +89,25 @@ class VegnBioApp extends StatelessWidget {
         RestoDashboardScreen.route: (_) => const RestoDashboardScreen(),
         RestoReservationsScreen.route: (_) => const RestoReservationsScreen(),
 
-        CartScreen.route: (_) => const CartScreen(),
-        CheckoutScreen.route: (_) => const CheckoutScreen(),
-        OrderConfirmationScreen.route: (_) => const OrderConfirmationScreen(),
+        // Panier/commandes client
+        // (laisse si utilisé côté client)
+        // CartScreen.route: (_) => const CartScreen(),
+        // CheckoutScreen.route: (_) => const CheckoutScreen(),
+        // OrderConfirmationScreen.route: (_) => const OrderConfirmationScreen(),
 
+        // Supplier (fournisseur)
         SupplierShell.route: (_) => const SupplierShell(),
-
+        SupplierCatalogScreen.route: (_) => const SupplierCatalogScreen(),
         SupplierOfferFormScreen.route: (_) => const SupplierOfferFormScreen(),
         SupplierOfferDetailScreen.route: (_) => const SupplierOfferDetailScreen(),
+        SupplierInboxScreen.route: (_) => const SupplierInboxScreen(),
+        SupplierOrderDetailScreen.route: (_) => const SupplierOrderDetailScreen(),
+        SupplierOrderReviewScreen.route: (_) => const SupplierOrderReviewScreen(),
 
-        // (les 2 suivants sont déjà affichés dans le shell mais utiles pour navigation directe)
+        // Supplier - reviews & profil (navigation directe si besoin)
         '/supplier/reviews': (_) => const SupplierReviewsScreen(),
         SupplierReviewDetailScreen.route: (_) => const SupplierReviewDetailScreen(),
         '/supplier/profile': (_) => const SupplierProfileScreen(),
-
 
         // Auth
         LoginScreen.route: (_) => const LoginScreen(),
@@ -110,7 +117,7 @@ class VegnBioApp extends StatelessWidget {
   }
 }
 
-/// Décide de l’écran d’entrée selon l’état d’auth (évite le piège `initialRoute`)
+/// Décide de l’écran d’entrée selon l’état d’auth
 class _AuthGate extends ConsumerWidget {
   const _AuthGate();
 
@@ -118,8 +125,6 @@ class _AuthGate extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authProvider);
 
-    // Pendant le boot, on peut afficher un splash simple
-    // (ex: le temps de fetch /me si un token existe)
     if (auth.loading && auth.user == null && !auth.isAuthenticated) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),

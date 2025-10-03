@@ -1,5 +1,7 @@
+// lib/screens/supplier/catalog/supplier_catalog_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../providers/supplier_offers_provider.dart';
 import '../../../models/supplier_offer.dart';
 import '../../../theme/app_colors.dart';
@@ -7,6 +9,7 @@ import 'supplier_offer_detail_screen.dart';
 import 'supplier_offer_form_screen.dart';
 
 class SupplierCatalogScreen extends ConsumerStatefulWidget {
+  static const route = '/supplier/catalog';
   const SupplierCatalogScreen({super.key});
 
   @override
@@ -15,8 +18,8 @@ class SupplierCatalogScreen extends ConsumerStatefulWidget {
 
 class _SupplierCatalogScreenState extends ConsumerState<SupplierCatalogScreen> {
   final _search = TextEditingController();
-  String? _status; // DRAFT/PUBLISHED/UNLISTED/FLAGGED
-  String? _sort;   // price|-price
+  String? _status; // DRAFT | PUBLISHED | UNLISTED | FLAGGED (filtre local)
+  String? _sort;   // "price" | "-price" (tri back)
 
   @override
   void dispose() {
@@ -26,27 +29,33 @@ class _SupplierCatalogScreenState extends ConsumerState<SupplierCatalogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final filters = SupplierOfferFilters(q: _search.text.trim().isEmpty ? null : _search.text.trim(), status: _status, sort: _sort);
+    final auth = ref.watch(authProvider);
+    final meId = auth.user?.pk;
+
+    final filters = SupplierOfferFilters(
+      q: _search.text.trim().isEmpty ? null : _search.text.trim(),
+      sort: _sort, // tri géré par le back
+    );
     final async = ref.watch(supplierOffersProvider(filters));
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mon catalogue'),
+        title: const Text('Mes offres'),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.filter_list),
-            onSelected: (v) => setState(() => _status = v == 'ALL' ? null : v),
+            onSelected: (v) => setState(() => _status = (v == 'ALL') ? null : v),
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'ALL',      child: Text('Tous les statuts')),
-              PopupMenuItem(value: 'DRAFT',    child: Text('Brouillon')),
-              PopupMenuItem(value: 'PUBLISHED',child: Text('Publié')),
-              PopupMenuItem(value: 'UNLISTED', child: Text('Retiré')),
-              PopupMenuItem(value: 'FLAGGED',  child: Text('Signalé')),
+              PopupMenuItem(value: 'ALL',       child: Text('Tous les statuts')),
+              PopupMenuItem(value: 'DRAFT',     child: Text('Brouillon')),
+              PopupMenuItem(value: 'PUBLISHED', child: Text('Publié')),
+              PopupMenuItem(value: 'UNLISTED',  child: Text('Retiré')),
+              PopupMenuItem(value: 'FLAGGED',   child: Text('Signalé')),
             ],
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.sort),
-            onSelected: (v) => setState(() => _sort = v == 'NONE' ? null : v),
+            onSelected: (v) => setState(() => _sort = (v == 'NONE') ? null : v),
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'NONE',   child: Text('Tri par défaut')),
               PopupMenuItem(value: 'price',  child: Text('Prix ↑')),
@@ -68,30 +77,47 @@ class _SupplierCatalogScreenState extends ConsumerState<SupplierCatalogScreen> {
                 filled: true,
                 fillColor: const Color(0xFFF7F7F8),
                 contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
               ),
             ),
           ),
           Expanded(
             child: async.when(
-              data: (list) {
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Erreur: $e')),
+              data: (listAll) {
+                // ✅ Si meId est null (ex: /me pas encore chargé), on n’applique pas le filtre
+                final mine = (meId == null)
+                    ? listAll
+                    : listAll.where((o) => o.supplierId == meId).toList();
+
+                // Filtre local par statut (le back n’a pas de param status)
+                final list = (_status == null)
+                    ? mine
+                    : mine.where((o) => o.status == _status).toList();
+
                 if (list.isEmpty) {
-                  return _EmptyState(onCreate: () {
-                    Navigator.pushNamed(context, SupplierOfferFormScreen.route);
-                  });
+                  return _EmptyState(
+                    onCreate: () => Navigator.pushNamed(
+                      context,
+                      SupplierOfferFormScreen.route,
+                    ),
+                  );
                 }
+
                 return RefreshIndicator(
-                  onRefresh: () async => ref.invalidate(supplierOffersProvider(filters)),
+                  onRefresh: () async => ref.invalidate(supplierOffersProvider),
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                    itemBuilder: (_, i) => _OfferCard(o: list[i]),
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemCount: list.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) => _OfferCard(o: list[i]),
                   ),
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Erreur: $e')),
             ),
           ),
         ],
@@ -131,28 +157,26 @@ class _OfferCard extends ConsumerWidget {
                 Navigator.pushNamed(context, SupplierOfferFormScreen.route, arguments: {'id': o.id});
                 break;
               case 'publish':
-                final ok = await editor.publish(o.id);
-                _toast(context, ok ? 'Offre publiée' : 'Échec publication');
+                _act(context, await editor.publish(o.id), 'Offre publiée', 'Échec publication');
                 break;
               case 'unlist':
-                final ok = await editor.unlist(o.id);
-                _toast(context, ok ? 'Offre retirée' : 'Échec retrait');
+                _act(context, await editor.unlist(o.id), 'Offre retirée', 'Échec retrait');
                 break;
               case 'draft':
-                final ok = await editor.draft(o.id);
-                _toast(context, ok ? 'Passée en brouillon' : 'Échec');
+                _act(context, await editor.draft(o.id), 'Passée en brouillon', 'Échec');
                 break;
               case 'delete':
-                final ok = await editor.delete(o.id);
-                _toast(context, ok ? 'Offre supprimée' : 'Suppression impossible');
+                _act(context, await editor.delete(o.id), 'Offre supprimée', 'Suppression impossible');
                 break;
             }
           },
           itemBuilder: (_) => [
             const PopupMenuItem(value: 'detail', child: Text('Aperçu')),
             const PopupMenuItem(value: 'edit',   child: Text('Éditer')),
-            if (o.status != 'PUBLISHED') const PopupMenuItem(value: 'publish', child: Text('Publier')),
-            if (o.status == 'PUBLISHED') const PopupMenuItem(value: 'unlist',  child: Text('Dépublier')),
+            if (o.status != 'PUBLISHED')
+              const PopupMenuItem(value: 'publish', child: Text('Publier')),
+            if (o.status == 'PUBLISHED')
+              const PopupMenuItem(value: 'unlist',  child: Text('Dépublier')),
             const PopupMenuItem(value: 'draft',  child: Text('Brouillon')),
             const PopupMenuDivider(),
             const PopupMenuItem(value: 'delete', child: Text('Supprimer')),
@@ -161,6 +185,10 @@ class _OfferCard extends ConsumerWidget {
         onTap: () => Navigator.pushNamed(context, SupplierOfferDetailScreen.route, arguments: o.id),
       ),
     );
+  }
+
+  void _act(BuildContext ctx, bool ok, String okMsg, String koMsg) {
+    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(ok ? okMsg : koMsg)));
   }
 }
 
@@ -188,8 +216,22 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-void _toast(BuildContext ctx, String m) => ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(m)));
-String _fmtMoney(String s) { final v = double.tryParse(s.replaceAll(',', '.')) ?? 0; return '${v.toStringAsFixed(2)}€'; }
+String _fmtMoney(String s) {
+  final v = double.tryParse(s.replaceAll(',', '.')) ?? 0;
+  return '${v.toStringAsFixed(2)}€';
+}
+
 String _statusLabel(String s) {
-  switch (s) { case 'DRAFT': return 'Brouillon'; case 'PUBLISHED': return 'Publié'; case 'UNLISTED': return 'Retiré'; case 'FLAGGED': return 'Signalé'; default: return s; }
+  switch (s) {
+    case 'DRAFT':
+      return 'Brouillon';
+    case 'PUBLISHED':
+      return 'Publié';
+    case 'UNLISTED':
+      return 'Retiré';
+    case 'FLAGGED':
+      return 'Signalé';
+    default:
+      return s;
+  }
 }

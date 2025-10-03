@@ -28,7 +28,11 @@ class SupplierOfferDetailScreen extends ConsumerWidget {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => Navigator.pushNamed(context, SupplierOfferFormScreen.route, arguments: {'id': o.id}),
+                  onPressed: () => Navigator.pushNamed(
+                    context,
+                    SupplierOfferFormScreen.route,
+                    arguments: {'id': o.id},
+                  ),
                   icon: const Icon(Icons.edit),
                   label: const Text('Éditer'),
                 ),
@@ -48,10 +52,13 @@ class SupplierOfferDetailScreen extends ConsumerWidget {
                           : 'Action impossible'),
                     ));
                     ref.invalidate(supplierOfferDetailProvider(o.id));
-                    ref.invalidate(supplierOffersProvider(const SupplierOfferFilters()));
+                    ref.invalidate(supplierOffersProvider);
                   },
                   icon: Icon(o.status == 'PUBLISHED' ? Icons.visibility_off : Icons.public),
-                  style: FilledButton.styleFrom(backgroundColor: kPrimaryGreenDark, foregroundColor: Colors.white),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: kPrimaryGreenDark,
+                    foregroundColor: Colors.white,
+                  ),
                   label: Text(o.status == 'PUBLISHED' ? 'Dépublier' : 'Publier'),
                 ),
               ),
@@ -64,12 +71,12 @@ class SupplierOfferDetailScreen extends ConsumerWidget {
   }
 }
 
-class _Body extends ConsumerWidget {
+class _Body extends StatelessWidget {
   final SupplierOffer o;
   const _Body({required this.o});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -114,13 +121,16 @@ class _Body extends ConsumerWidget {
         const SizedBox(height: 12),
         Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
-              Text('Historique des statuts', style: TextStyle(fontWeight: FontWeight.w700)),
-              SizedBox(height: 6),
-              Text('Dernières transitions (placeholder).'),
-            ]),
+          child: const Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Historique des statuts', style: TextStyle(fontWeight: FontWeight.w700)),
+                SizedBox(height: 6),
+                Text('Dernières transitions (placeholder).'),
+              ],
+            ),
           ),
         ),
       ],
@@ -128,8 +138,23 @@ class _Body extends ConsumerWidget {
   }
 }
 
-String _fmtMoney(String s) { final v = double.tryParse(s.replaceAll(',', '.')) ?? 0; return '${v.toStringAsFixed(2)}€'; }
-String _d(DateTime? d) => d == null ? '—' : '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
+String _fmtMoney(String s) {
+  final v = double.tryParse(s.replaceAll(',', '.')) ?? 0;
+  return '${v.toStringAsFixed(2)}€';
+}
+String _d(DateTime? d) =>
+    d == null ? '—' : '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 String _statusLabel(String s) {
-  switch (s) { case 'DRAFT': return 'Brouillon'; case 'PUBLISHED': return 'Publié'; case 'UNLISTED': return 'Retiré'; case 'FLAGGED': return 'Signalé'; default: return s; }
+  switch (s) {
+    case 'DRAFT':
+      return 'Brouillon';
+    case 'PUBLISHED':
+      return 'Publié';
+    case 'UNLISTED':
+      return 'Retiré';
+    case 'FLAGGED':
+      return 'Signalé';
+    default:
+      return s;
+  }
 }
