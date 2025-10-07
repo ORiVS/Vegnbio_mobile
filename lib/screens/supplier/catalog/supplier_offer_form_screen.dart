@@ -1,7 +1,12 @@
+// lib/screens/supplier/catalog/supplier_offer_form_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
+
 import '../../../providers/supplier_offers_provider.dart';
+import '../../../providers/allergens_provider.dart';
 import '../../../models/supplier_offer.dart';
+import '../../../models/allergen.dart';
 import '../../../core/api_paths.dart';
 import '../../../core/api_service.dart';
 import '../../../theme/app_colors.dart';
@@ -22,7 +27,10 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
   // champs
   final _name = TextEditingController();
   final _desc = TextEditingController();
-  bool _isBio = true; // par défaut true (requis par le back)
+
+  // ❗ Désactivé par défaut maintenant
+  bool _isBio = false;
+
   final _producer = TextEditingController();
   final _region = TextEditingController(text: 'Île-de-France'); // IDF requis
   final _unit = TextEditingController(text: 'kg');
@@ -31,7 +39,9 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
   final _stock = TextEditingController(text: '0');
   DateTime? _from;
   DateTime? _to;
-  final _allergensCsv = TextEditingController(); // ids séparés par virgules (optionnel)
+
+  // Nouvelle sélection d’allergènes
+  final List<int> _selectedAllergenIds = [];
 
   @override
   void dispose() {
@@ -43,7 +53,6 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
     _price.dispose();
     _minQty.dispose();
     _stock.dispose();
-    _allergensCsv.dispose();
     super.dispose();
   }
 
@@ -72,7 +81,9 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
       _stock.text = o.stockQty;
       _from = o.availableFrom;
       _to = o.availableTo;
-      _allergensCsv.text = o.allergens.join(',');
+      _selectedAllergenIds
+        ..clear()
+        ..addAll(o.allergens); // le modèle de l’offre expose List<int> allergens
     });
   }
 
@@ -110,16 +121,26 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
                         decoration: const InputDecoration(labelText: 'Description'),
                       ),
                       const SizedBox(height: 8),
+
+                      // --- BIO : désactivé par défaut + modal de certification à l’activation ---
                       SwitchListTile(
                         value: _isBio,
-                        onChanged: (v) => setState(() => _isBio = v),
+                        onChanged: (v) async {
+                          if (v == true) {
+                            final ok = await _confirmBio(context);
+                            if (!ok) return;
+                          }
+                          setState(() => _isBio = v);
+                        },
                         title: const Text('Bio'),
                         contentPadding: EdgeInsets.zero,
                       ),
+
                       TextFormField(
                         controller: _producer,
                         decoration: const InputDecoration(labelText: 'Nom producteur (optionnel)'),
                       ),
+
                       const SizedBox(height: 12),
                       const Text('Tarifs & dispo', style: TextStyle(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
@@ -127,7 +148,7 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
                         Expanded(
                           child: TextFormField(
                             controller: _price,
-                            keyboardType: TextInputType.number,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             decoration: const InputDecoration(labelText: 'Prix'),
                             validator: (v) => (v == null || v.trim().isEmpty) ? 'Requis' : null,
                           ),
@@ -146,7 +167,7 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
                         Expanded(
                           child: TextFormField(
                             controller: _minQty,
-                            keyboardType: TextInputType.number,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             decoration: const InputDecoration(labelText: 'Qté minimale'),
                           ),
                         ),
@@ -154,7 +175,7 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
                         Expanded(
                           child: TextFormField(
                             controller: _stock,
-                            keyboardType: TextInputType.number,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             decoration: const InputDecoration(labelText: 'Stock dispo'),
                           ),
                         ),
@@ -183,13 +204,19 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
                         decoration: const InputDecoration(labelText: 'Région (ex: Île-de-France)'),
                         validator: (v) => (v == null || v.trim().isEmpty) ? 'Requis' : null,
                       ),
+
+                      const SizedBox(height: 16),
+                      const Text('Allergènes', style: TextStyle(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _allergensCsv,
-                        decoration: const InputDecoration(
-                          labelText: 'Allergènes (IDs séparés par , — optionnel)',
-                          helperText: 'Laisse vide si non applicable',
-                        ),
+                      _AllergenPicker(
+                        selectedIds: _selectedAllergenIds,
+                        onChanged: (ids) {
+                          setState(() {
+                            _selectedAllergenIds
+                              ..clear()
+                              ..addAll(ids);
+                          });
+                        },
                       ),
                     ],
                   ),
@@ -224,6 +251,31 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
     );
   }
 
+  Future<bool> _confirmBio(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        // <- pas de const ici
+        title: Text('Certification Bio'),
+        content: Text(
+          "En activant l’option Bio, vous certifiez que ce produit dispose d’un "
+              "label bio officiel valide dans votre pays (ex. AB, EU Bio, etc.).",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Je certifie'),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
   Future<void> _submit(BuildContext context, {required bool submit}) async {
     if (!(_form.currentState?.validate() ?? false)) return;
     setState(() => _saving = true);
@@ -231,7 +283,7 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
     final payload = {
       'product_name': _name.text.trim(),
       'description': _desc.text.trim(),
-      'is_bio': _isBio, // requis par le back (true attendu)
+      'is_bio': _isBio, // désormais false par défaut, confirmé si activé
       'producer_name': _producer.text.trim().isEmpty ? null : _producer.text.trim(),
       'region': _region.text.trim(), // IDF attendu par le back
       'unit': _unit.text.trim(),
@@ -240,13 +292,7 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
       'stock_qty': _stock.text.trim(),
       'available_from': _from?.toIso8601String().split('T').first,
       'available_to': _to?.toIso8601String().split('T').first,
-      if (_allergensCsv.text.trim().isNotEmpty)
-        'allergens': _allergensCsv.text
-            .trim()
-            .split(',')
-            .where((x) => x.trim().isNotEmpty)
-            .map((x) => int.parse(x.trim()))
-            .toList(),
+      if (_selectedAllergenIds.isNotEmpty) 'allergens': _selectedAllergenIds,
     };
 
     final ed = ref.read(supplierOfferEditorProvider.notifier);
@@ -270,15 +316,27 @@ class _SupplierOfferFormScreenState extends ConsumerState<SupplierOfferFormScree
         );
         Navigator.pop(context);
       }
-    } catch (_) {
+    } catch (e) {
+      final msg = _friendlyError(e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur de sauvegarde')),
+          SnackBar(content: Text(msg)),
         );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  String _friendlyError(Object error) {
+    if (error is DioException) {
+      final res = error.response;
+      final data = res?.data;
+      if (data is Map && data['detail'] is String) return data['detail'];
+      if (res?.statusCode == 403) return "Accès refusé.";
+      if (res?.statusCode == 400) return "Données invalides.";
+    }
+    return "Erreur inconnue. Réessayez.";
   }
 }
 
@@ -305,9 +363,148 @@ class _DateField extends StatelessWidget {
         onPick(d);
       },
       child: InputDecorator(
-        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+        decoration:  InputDecoration(labelText: label, border: OutlineInputBorder()),
         child: Text(txt),
       ),
+    );
+  }
+}
+
+/// Picker multi-sélection des allergènes + création
+class _AllergenPicker extends ConsumerStatefulWidget {
+  final List<int> selectedIds;
+  final ValueChanged<List<int>> onChanged;
+  const _AllergenPicker({required this.selectedIds, required this.onChanged});
+
+  @override
+  ConsumerState<_AllergenPicker> createState() => _AllergenPickerState();
+}
+
+class _AllergenPickerState extends ConsumerState<_AllergenPicker> {
+  int? _pendingAddId;
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(allergensProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        async.when(
+          loading: () => const Text('Chargement…'),
+          error: (e, _) => Text('Erreur: $e'),
+          data: (list) {
+            // Dropdown d’ajout
+            return Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    value: _pendingAddId,
+                    decoration: const InputDecoration(
+                      labelText: 'Ajouter un allergène',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: list
+                        .map((a) => DropdownMenuItem<int>(
+                      value: a.id,
+                      child: Text(a.label),
+                    ))
+                        .toList(),
+                    onChanged: (id) {
+                      setState(() => _pendingAddId = id);
+                      if (id != null && !widget.selectedIds.contains(id)) {
+                        final updated = [...widget.selectedIds, id];
+                        widget.onChanged(updated);
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 10),
+        // Chips des sélectionnés
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          children: [
+            for (final id in widget.selectedIds)
+              _AllergenChip(id: id, onRemove: () {
+                final updated = [...widget.selectedIds]..remove(id);
+                widget.onChanged(updated);
+              }),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _createAllergenDialog(BuildContext context) async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nouvel allergène'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(
+            labelText: 'Libellé (ex: Arachides)',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Créer')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final label = ctrl.text.trim();
+    if (label.isEmpty) return;
+
+    final editor = ref.read(allergenEditorProvider.notifier);
+    final created = await editor.create(label: label);
+    if (!mounted) return;
+
+    if (created != null) {
+      // Ajoute à la sélection
+      if (!widget.selectedIds.contains(created.id)) {
+        widget.onChanged([...widget.selectedIds, created.id]);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Allergène "${created.label}" créé.')),
+      );
+    } else {
+      final err = ref.read(allergenEditorProvider).maybeWhen(
+        error: (e, _) => e.toString(),
+        orElse: () => "Erreur lors de la création.",
+      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
+}
+
+/// Affiche un chip avec le label de l’allergène depuis le cache provider
+class _AllergenChip extends ConsumerWidget {
+  final int id;
+  final VoidCallback onRemove;
+  const _AllergenChip({required this.id, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(allergensProvider);
+    return async.when(
+      loading: () => const Chip(label: Text('…')),
+      error: (_, __) => Chip(label: Text('ID $id')),
+      data: (list) {
+        final found = list.firstWhere((a) => a.id == id, orElse: () => Allergen(id: id, code: '', label: 'ID $id'));
+        return InputChip(
+          label: Text(found.label),
+          onDeleted: onRemove,
+        );
+      },
     );
   }
 }

@@ -1,7 +1,13 @@
+// lib/screens/supplier/inbox/supplier_inbox_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../providers/supplier_orders_provider.dart';
 import '../../../models/supplier_order.dart';
+
+import '../../../providers/event_invites_provider.dart';
+import '../../../models/event_invite.dart';
+
 import 'supplier_order_detail_screen.dart';
 
 class SupplierInboxScreen extends ConsumerStatefulWidget {
@@ -12,53 +18,105 @@ class SupplierInboxScreen extends ConsumerStatefulWidget {
   ConsumerState<SupplierInboxScreen> createState() => _SupplierInboxScreenState();
 }
 
-class _SupplierInboxScreenState extends ConsumerState<SupplierInboxScreen> {
+class _SupplierInboxScreenState extends ConsumerState<SupplierInboxScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tab;
   String? _statusFilter; // null = tous, sinon PENDING_SUPPLIER/...
 
   @override
+  void initState() {
+    super.initState();
+    _tab = TabController(length: 2, vsync: this); // Commandes / Invitations
+  }
+
+  @override
+  void dispose() {
+    _tab.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final async = ref.watch(supplierInboxProvider);
+    final invitesAsync = ref.watch(eventInvitesProvider);
+    final badge = invitesAsync.maybeWhen(
+      data: (list) => list.length,
+      orElse: () => 0,
+    );
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Boîte de réception'),
+        title: Row(
+          children: [
+            const Text('Boîte de réception'),
+            const SizedBox(width: 8),
+            if (badge > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade400,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text('$badge invitations',
+                    style: const TextStyle(color: Colors.white, fontSize: 12)),
+              ),
+          ],
+        ),
+        bottom: TabBar(
+          controller: _tab,
+          tabs: const [
+            Tab(text: 'Commandes'),
+            Tab(text: 'Invitations'),
+          ],
+        ),
         actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list),
-            onSelected: (v) => setState(() => _statusFilter = v == 'ALL' ? null : v),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'ALL',                   child: Text('Tous')),
-              PopupMenuItem(value: 'PENDING_SUPPLIER',      child: Text('En attente')),
-              PopupMenuItem(value: 'CONFIRMED',             child: Text('Confirmées')),
-              PopupMenuItem(value: 'PARTIALLY_CONFIRMED',   child: Text('Partielles')),
-              PopupMenuItem(value: 'REJECTED',              child: Text('Rejetées')),
-              PopupMenuItem(value: 'CANCELLED',             child: Text('Annulées')),
-            ],
-          ),
+          if (_tab.index == 0)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.filter_list),
+              onSelected: (v) => setState(() => _statusFilter = v == 'ALL' ? null : v),
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'ALL',                  child: Text('Tous')),
+                PopupMenuItem(value: 'PENDING_SUPPLIER',     child: Text('En attente')),
+                PopupMenuItem(value: 'CONFIRMED',            child: Text('Confirmées')),
+                PopupMenuItem(value: 'PARTIALLY_CONFIRMED',  child: Text('Partielles')),
+                PopupMenuItem(value: 'REJECTED',             child: Text('Rejetées')),
+                PopupMenuItem(value: 'CANCELLED',            child: Text('Annulées')),
+              ],
+            ),
         ],
       ),
-      body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Erreur: $e')),
-        data: (list) {
-          final filtered = _statusFilter == null
-              ? list
-              : list.where((o) => o.status == _statusFilter).toList();
-
-          if (filtered.isEmpty) {
-            return const _EmptyInbox();
-          }
-          return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(supplierInboxProvider),
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              itemCount: filtered.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (_, i) => _OrderTile(o: filtered[i]),
-            ),
-          );
-        },
+      body: TabBarView(
+        controller: _tab,
+        children: const [
+          _OrdersTab(),
+          _InvitesTab(),
+        ],
       ),
+    );
+  }
+}
+
+class _OrdersTab extends ConsumerWidget {
+  const _OrdersTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(supplierInboxProvider);
+
+    return async.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Erreur: $e')),
+      data: (list) {
+        if (list.isEmpty) return const _EmptyInbox(text: 'Aucune commande reçue pour le moment.');
+        return RefreshIndicator(
+          onRefresh: () async => ref.invalidate(supplierInboxProvider),
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (_, i) => _OrderTile(o: list[i]),
+          ),
+        );
+      },
     );
   }
 }
@@ -90,12 +148,12 @@ class _OrderTile extends StatelessWidget {
     final label = statusLabel(s);
     Color bg;
     switch (s) {
-      case 'PENDING_SUPPLIER':    bg = Colors.orange.shade100; break;
-      case 'CONFIRMED':           bg = Colors.green.shade100; break;
+      case 'PENDING_SUPPLIER': bg = Colors.orange.shade100; break;
+      case 'CONFIRMED': bg = Colors.green.shade100; break;
       case 'PARTIALLY_CONFIRMED': bg = Colors.blue.shade100; break;
-      case 'REJECTED':            bg = Colors.red.shade100; break;
-      case 'CANCELLED':           bg = Colors.grey.shade300; break;
-      default:                    bg = Colors.grey.shade200;
+      case 'REJECTED': bg = Colors.red.shade100; break;
+      case 'CANCELLED': bg = Colors.grey.shade300; break;
+      default: bg = Colors.grey.shade200;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -105,30 +163,102 @@ class _OrderTile extends StatelessWidget {
   }
 }
 
-class _EmptyInbox extends StatelessWidget {
-  const _EmptyInbox();
+class _InvitesTab extends ConsumerWidget {
+  const _InvitesTab();
 
   @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(24),
-        child: Text('Aucune commande reçue pour le moment.'),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(eventInvitesProvider);
+
+    return async.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Erreur: $e')),
+      data: (list) {
+        if (list.isEmpty) return const _EmptyInbox(text: 'Aucune invitation pour le moment.');
+        return RefreshIndicator(
+          onRefresh: () async => ref.invalidate(eventInvitesProvider),
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (_, i) => _InviteCard(inv: list[i]),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _InviteCard extends ConsumerWidget {
+  final EventInviteModel inv;
+  const _InviteCard({required this.inv});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final d = _fmtDate(inv.event.date);
+    final h = '${_fmtTime(inv.event.startTime)} – ${_fmtTime(inv.event.endTime)}';
+    final deadline = inv.supplierDeadlineAt ?? inv.expiresAt;
+    final dlStr = deadline == null ? '—' : _d(deadline);
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: ListTile(
+        title: Text(inv.event.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text('$d • $h\nDate limite: $dlStr'),
+        isThreeLine: true,
+        trailing: PopupMenuButton<String>(
+          onSelected: (v) async {
+            final actions = ref.read(eventInviteActionsProvider.notifier);
+            bool ok = false;
+            if (v == 'accept') ok = await actions.accept(inv.id);
+            if (v == 'decline') ok = await actions.decline(inv.id);
+            if (!context.mounted) return;
+            if (ok) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(v == 'accept' ? 'Invitation acceptée' : 'Invitation refusée')),
+              );
+              ref.invalidate(eventInvitesProvider);
+            } else {
+              final msg = ref.read(eventInviteActionsProvider.notifier).lastError ?? 'Action impossible';
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+            }
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'accept', child: Text('Accepter')),
+            PopupMenuItem(value: 'decline', child: Text('Refuser')),
+          ],
+        ),
       ),
     );
   }
 }
 
-String statusLabel(String s) {
-  switch (s) {
-    case 'PENDING_SUPPLIER':    return 'En attente';
-    case 'CONFIRMED':           return 'Confirmée';
-    case 'PARTIALLY_CONFIRMED': return 'Partielle';
-    case 'REJECTED':            return 'Rejetée';
-    case 'CANCELLED':           return 'Annulée';
-    default:                    return s;
+class _EmptyInbox extends StatelessWidget {
+  final String text;
+  const _EmptyInbox({this.text = '—'});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(text),
+      ),
+    );
   }
 }
 
 String _d(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+String _fmtDate(String ymd) {
+  // ymd = YYYY-MM-DD
+  if (ymd.length >= 10) return '${ymd.substring(8,10)}/${ymd.substring(5,7)}/${ymd.substring(0,4)}';
+  return ymd;
+}
+
+String _fmtTime(String hms) {
+  // hms = HH:MM(:SS)
+  if (hms.length >= 5) return hms.substring(0,5);
+  return hms;
+}

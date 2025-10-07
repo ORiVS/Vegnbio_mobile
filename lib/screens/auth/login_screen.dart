@@ -35,7 +35,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       body: Column(
         children: [
-          const AuthHeader(title: 'Sign in', subtitle: 'Good morning,'),
+          const AuthHeader(title: 'Se connecter', subtitle: 'Bonjour,'),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -50,7 +50,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           children: [
                             AuthField(
                               controller: _emailCtrl,
-                              hint: 'Email address',
+                              hint: 'Adresse email',
                               icon: Icons.email_outlined,
                               keyboardType: TextInputType.emailAddress,
                               validator: (v) => v == null || v.isEmpty ? 'Requis' : null,
@@ -58,7 +58,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             const SizedBox(height: 12),
                             AuthField(
                               controller: _pwdCtrl,
-                              hint: 'Password',
+                              hint: 'Mot de passe',
                               icon: Icons.lock_outline,
                               obscure: _obscure,
                               suffix: IconButton(
@@ -73,7 +73,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     const SizedBox(height: 24),
                     PrimaryCta(
-                      text: 'Sign in',
+                      text: 'Se connecter',
                       loading: auth.loading,
                       onPressed: auth.loading
                           ? null
@@ -112,13 +112,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text("No account? "),
+                        const Text("Vous n'avez pas de compte ? "),
                         TextButton(
                           onPressed: () {
                             print('[UI] Navigate -> RegisterScreen');
                             Navigator.pushNamed(context, RegisterScreen.route);
                           },
-                          child: const Text('Create one'),
+                          child: const Text('Créer un compte'),
                         ),
                       ],
                     ),

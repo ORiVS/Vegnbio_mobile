@@ -34,7 +34,7 @@ class ApiPaths {
   static String eventUnregister(int id) => '/api/restaurants/evenements/$id/unregister/';
   static String eventRegistrations(int id) => '/api/restaurants/evenements/$id/registrations/';
 
-  // ====== Client orders (déjà existant dans ton app client) ======
+  // ====== Client orders ======
   static const cart        = '/api/orders/cart/';
   static const checkout    = '/api/orders/checkout/';
   static const ordersList  = '/api/orders/';
@@ -56,12 +56,19 @@ class ApiPaths {
   static String supplierOffersCompare(List<int> ids) =>
       '$supplierOffers' 'compare/?ids=${ids.join(",")}';
 
-  // ====== Purchasing (NOUVEAU côté mobile fournisseur) ======
+  // ====== Purchasing (mobile fournisseur) ======
   static const purchasingOrders = '/api/purchasing/orders/';
   static const supplierInbox = '/api/purchasing/orders/supplier_inbox/'; // GET
   static String purchasingOrderDetail(int id) => '/api/purchasing/orders/$id/'; // GET
   static String purchasingOrderSupplierReview(int id)
   => '/api/purchasing/orders/$id/supplier_review/'; // POST
+
+  // ====== Invitations d'évènements (fournisseur, in-app) ======
+  static const myEventInvites = '/api/restaurants/evenements/invites/mine/';
+  static String eventInviteAccept(int inviteId)
+  => '/api/restaurants/evenements/invites/$inviteId/accept/';
+  static String eventInviteDecline(int inviteId)
+  => '/api/restaurants/evenements/invites/$inviteId/decline/';
 
   // ====== Fidélité ======
   static const loyaltyPoints       = '/api/fidelite/points/';
@@ -73,6 +80,8 @@ class ApiPaths {
   static const dishes = '/api/menu/dishes/';
   static String dish(int id) => '$dishes$id/';
   static const dishAvailabilities = '/api/menu/dish-availability/';
+  static const allergens = '/api/menu/allergens/';
+
 
   static String dishAvailabilityQuery({
     required int restaurantId,
