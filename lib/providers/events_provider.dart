@@ -19,7 +19,7 @@ List<dynamic> _extractList(dynamic data) {
 final eventsProvider = FutureProvider<List<Event>>((ref) async {
   final res = await ApiService.instance.dio.get(
     ApiPaths.events,
-    queryParameters: {'status': 'PUBLISHED'}, // pour être sûr côté auth
+    queryParameters: {'status': 'PUBLISHED'},
   );
   final list = _extractList(res.data);
   return list.map((e) => Event.fromJson(e as Map<String, dynamic>)).toList();
@@ -38,7 +38,7 @@ FutureProvider.family<EventRegistrationInfo, int>((ref, id) async {
   return EventRegistrationInfo.fromJson(res.data as Map<String, dynamic>);
 });
 
-/// S’inscrire
+/// S’inscrire (API publique côté back)
 Future<ApiError?> registerToEvent(int id) async {
   try {
     await ApiService.instance.dio.post(ApiPaths.eventRegister(id));
@@ -54,6 +54,24 @@ Future<ApiError?> registerToEvent(int id) async {
 Future<ApiError?> unregisterFromEvent(int id) async {
   try {
     await ApiService.instance.dio.post(ApiPaths.eventUnregister(id));
+    return null;
+  } on DioException catch (e) {
+    return ApiError.fromDio(e);
+  } catch (e) {
+    return ApiError(messages: [e.toString()]);
+  }
+}
+
+/// (Optionnel) Accepter une invitation par TOKEN (si besoin)
+Future<ApiError?> acceptEventInviteWithToken({
+  required int eventId,
+  required String token,
+}) async {
+  try {
+    await ApiService.instance.dio.post(
+      ApiPaths.eventAcceptInvite(eventId),
+      data: {'token': token},
+    );
     return null;
   } on DioException catch (e) {
     return ApiError.fromDio(e);

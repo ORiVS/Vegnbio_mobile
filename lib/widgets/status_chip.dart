@@ -1,4 +1,4 @@
-// lib/widgets/status_chip.dart (exemple)
+// lib/widgets/status_chip.dart
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 

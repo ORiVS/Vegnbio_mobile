@@ -42,8 +42,7 @@ class EventDetailScreen extends ConsumerWidget {
 
               if (ev.capacity != null)
                 reg.maybeWhen(
-                  data: (info) => Text('Capacité : ${info.count}/${ev.capacity}',
-                      style: TextStyle(color: Colors.grey.shade700)),
+                  data: (info) => Text('Capacité : ${info.count}/${ev.capacity}', style: TextStyle(color: Colors.grey.shade700)),
                   orElse: () => const SizedBox.shrink(),
                 ),
 
@@ -53,7 +52,7 @@ class EventDetailScreen extends ConsumerWidget {
               Text(ev.description),
 
               const SizedBox(height: 24),
-              _DetailAction(eventId: ev.id, status: ev.status),
+              if (ev.status == 'PUBLISHED') _DetailAction(eventId: ev.id) else const SizedBox.shrink(),
             ],
           );
         },
@@ -68,47 +67,89 @@ class EventDetailScreen extends ConsumerWidget {
 
 class _DetailAction extends ConsumerWidget {
   final int eventId;
-  final String status;
-  const _DetailAction({required this.eventId, required this.status});
+  const _DetailAction({required this.eventId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (status != 'PUBLISHED') return const SizedBox.shrink();
-
     final reg = ref.watch(eventRegInfoProvider(eventId));
+
     return reg.when(
       data: (info) {
-        if (info.meRegistered) {
-          return FilledButton.tonal(
-            onPressed: () async {
-              final ok = await showConfirmDialog(context, title: 'Se désinscrire ?', confirmLabel: 'Me désinscrire');
-              if (ok != true) return;
-              final err = await unregisterFromEvent(eventId);
-              if (err != null) { await showErrorDialog(context, title: 'Désinscription impossible.', error: err); return; }
-              await showSuccessDialog(context, title: 'Désinscription effectuée.');
-              ref.invalidate(eventRegInfoProvider(eventId));
-              ref.invalidate(eventsProvider);
-            },
-            child: const Text('Se désinscrire'),
-          );
-        } else {
-          return FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: kPrimaryGreen),
-            onPressed: () async {
-              final ok = await showConfirmDialog(context, title: 'S’inscrire à cet évènement ?', confirmLabel: 'S’inscrire');
-              if (ok != true) return;
-              final err = await registerToEvent(eventId);
-              if (err != null) { await showErrorDialog(context, title: 'Inscription impossible.', error: err); return; }
-              await showSuccessDialog(context, title: 'Inscription confirmée.');
-              ref.invalidate(eventRegInfoProvider(eventId));
-              ref.invalidate(eventsProvider);
-            },
-            child: const Text('S’inscrire'),
-          );
-        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (info.meRegistered)
+              FilledButton.tonal(
+                onPressed: () async {
+                  final ok = await showConfirmDialog(context, title: 'Se désinscrire ?', confirmLabel: 'Me désinscrire');
+                  if (ok != true) return;
+                  final err = await unregisterFromEvent(eventId);
+                  if (err != null) { await showErrorDialog(context, title: 'Désinscription impossible.', error: err); return; }
+                  await showSuccessDialog(context, title: 'Désinscription effectuée.');
+                  ref.invalidate(eventRegInfoProvider(eventId));
+                  ref.invalidate(eventsProvider);
+                },
+                child: const Text('Se désinscrire'),
+              )
+            else
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: kPrimaryGreen),
+                onPressed: () async {
+                  final ok = await showConfirmDialog(context, title: 'S’inscrire à cet évènement ?', confirmLabel: 'S’inscrire');
+                  if (ok != true) return;
+                  final err = await registerToEvent(eventId);
+                  if (err != null) { await showErrorDialog(context, title: 'Inscription impossible.', error: err); return; }
+                  await showSuccessDialog(context, title: 'Inscription confirmée.');
+                  ref.invalidate(eventRegInfoProvider(eventId));
+                  ref.invalidate(eventsProvider);
+                },
+                child: const Text('S’inscrire'),
+              ),
+
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () async {
+                final token = await _askTokenDialog(context);
+                if (token == null || token.trim().isEmpty) return;
+
+                final err = await acceptEventInviteWithToken(eventId: eventId, token: token.trim());
+                if (err != null) {
+                  if (!context.mounted) return;
+                  await showErrorDialog(context, title: 'Invitation invalide', error: err);
+                  return;
+                }
+                if (!context.mounted) return;
+                await showSuccessDialog(context, title: 'Invitation acceptée. Inscription confirmée.');
+                ref.invalidate(eventDetailProvider(eventId));
+                ref.invalidate(eventRegInfoProvider(eventId));
+                ref.invalidate(eventsProvider);
+              },
+              icon: const Icon(Icons.mail_outline),
+              label: const Text("J'ai une invitation"),
+            ),
+          ],
+        );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Erreur : $e')),
     );
   }
+}
+
+Future<String?> _askTokenDialog(BuildContext context) async {
+  final ctrl = TextEditingController();
+  return await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Entrer le token d’invitation'),
+      content: TextField(
+        controller: ctrl,
+        decoration: const InputDecoration(hintText: 'Collez ici le token reçu par email'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Valider')),
+      ],
+    ),
+  );
 }

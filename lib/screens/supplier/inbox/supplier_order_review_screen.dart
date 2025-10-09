@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/supplier_orders_provider.dart';
-import '../../../providers/supplier_offers_provider.dart'; // pour récupérer (optionnellement) le stock d’une offre
+import '../../../providers/supplier_offers_provider.dart';
 import '../../../models/supplier_order.dart';
+import '../../../services/orders_archive.dart';
+import '../../../core/api_service.dart';
+import '../../../core/api_paths.dart';
 
 class SupplierOrderReviewScreen extends ConsumerStatefulWidget {
   static const route = '/supplier/inbox/order/review';
@@ -19,7 +22,15 @@ class _SupplierOrderReviewScreenState extends ConsumerState<SupplierOrderReviewS
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    order = ModalRoute.of(context)!.settings.arguments as SupplierOrder;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is SupplierOrder) {
+      order = args;
+    } else {
+      // fallback très simple si mauvaise navigation
+      Navigator.of(context).pop();
+      return;
+    }
+
     for (final it in order.items) {
       _controllers[it.id] = TextEditingController(
         text: it.qtyConfirmed?.toString() ?? it.qtyRequested, // prérempli avec demandé
@@ -96,7 +107,6 @@ class _SupplierOrderReviewScreenState extends ConsumerState<SupplierOrderReviewS
             label: Text(isLoading ? 'Envoi…' : 'Envoyer la validation'),
           ),
           const SizedBox(height: 8),
-          // Affichage d’erreur lisible si l’éditeur a renvoyé une erreur (validation côté back)
           reviewerState.when(
             data: (_) => const SizedBox.shrink(),
             loading: () => const SizedBox.shrink(),
@@ -135,38 +145,29 @@ class _SupplierOrderReviewScreenState extends ConsumerState<SupplierOrderReviewS
   Future<void> _submit() async {
     final reviewer = ref.read(supplierOrderReviewerProvider.notifier);
 
-    // validation locale + cap (≤ demandé) ; cap par stock si connu
+    // On garde une map { itemId: "val" } pour que le provider la transforme
     final Map<int, String> payload = {};
     for (final it in order.items) {
-      final txt = _controllers[it.id]!.text.trim();
-      final val = double.tryParse(txt.replaceAll(',', '.'));
+      final raw = _controllers[it.id]!.text.trim();
+      // cap local sur "≤ demandé" (le back vérifiera aussi le stock)
       final req = double.tryParse(it.qtyRequested.replaceAll(',', '.')) ?? 0;
-
+      final val = double.tryParse(raw.replaceAll(',', '.'));
       if (val == null || val < 0) {
         _toast('Quantité invalide pour "${it.productName}"');
         return;
       }
-
-      var confirmed = val > req ? req : val; // cap demandé
-
-      // cap optionnel par stock si dispo
-      final offerAsync = ref.read(supplierOfferDetailProvider(it.offerId));
-      offerAsync.whenData((offer) {
-        final stock = double.tryParse(offer.stockQty.replaceAll(',', '.'));
-        if (stock != null && confirmed > stock) {
-          confirmed = stock;
-        }
-      });
-
-      payload[it.id] = confirmed.toString();
+      final capped = val > req ? req : val;
+      payload[it.id] = capped.toString();
     }
 
     final ok = await reviewer.submit(order.id, payload);
     if (!mounted) return;
 
     if (ok) {
+      final res = await ApiService.instance.dio.get(ApiPaths.purchasingOrderDetail(order.id));
+      await OrdersArchive.instance.upsert(Map<String, dynamic>.from(res.data as Map));
+
       _toast('Validation envoyée');
-      // refresh inbox + détail si on revient
       ref.invalidate(supplierInboxProvider);
       ref.invalidate(supplierOrderDetailProvider(order.id));
       Navigator.pop(context); // sortir de la review
@@ -211,7 +212,7 @@ class _ReviewRow extends ConsumerWidget {
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(labelText: 'Confirmé'),
           onChanged: (_) {
-            // cap local direct (0..req); le cap stock est appliqué au submit
+            // cap local direct (0..req) ; le cap stock sera contrôlé serveur
             final val = double.tryParse(controller.text.replaceAll(',', '.'));
             if (val == null) return;
             final capped = val > req ? req : (val < 0 ? 0 : val);

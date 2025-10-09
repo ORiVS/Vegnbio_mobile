@@ -1,3 +1,4 @@
+//lib/models/delivery_slot.dart
 class DeliverySlotModel {
   final int id;
   final DateTime start;

@@ -1,4 +1,3 @@
-// lib/core/api_paths.dart
 class ApiPaths {
 
   // ---- Accounts / Auth ----
@@ -33,6 +32,7 @@ class ApiPaths {
   static String eventRegister(int id) => '/api/restaurants/evenements/$id/register/';
   static String eventUnregister(int id) => '/api/restaurants/evenements/$id/unregister/';
   static String eventRegistrations(int id) => '/api/restaurants/evenements/$id/registrations/';
+  static String eventAcceptInvite(int id) => '/api/restaurants/evenements/$id/accept_invite/';
 
   // ====== Client orders ======
   static const cart        = '/api/orders/cart/';
@@ -61,7 +61,8 @@ class ApiPaths {
   static const supplierInbox = '/api/purchasing/orders/supplier_inbox/'; // GET
   static String purchasingOrderDetail(int id) => '/api/purchasing/orders/$id/'; // GET
   static String purchasingOrderSupplierReview(int id)
-  => '/api/purchasing/orders/$id/supplier_review/'; // POST
+
+  => '/api/purchasing/orders/$id/review/'; // POST
 
   // ====== Invitations d'évènements (fournisseur, in-app) ======
   static const myEventInvites = '/api/restaurants/evenements/invites/mine/';
@@ -81,7 +82,6 @@ class ApiPaths {
   static String dish(int id) => '$dishes$id/';
   static const dishAvailabilities = '/api/menu/dish-availability/';
   static const allergens = '/api/menu/allergens/';
-
 
   static String dishAvailabilityQuery({
     required int restaurantId,

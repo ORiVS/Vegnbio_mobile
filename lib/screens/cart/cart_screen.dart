@@ -1,8 +1,12 @@
+// lib/screens/cart/cart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../providers/cart_provider.dart';
 import '../../models/cart.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/cart_link_store.dart';
+import '../../providers/auth_provider.dart';
 import 'checkout_screen.dart';
 
 class CartScreen extends ConsumerWidget {
@@ -18,9 +22,7 @@ class CartScreen extends ConsumerWidget {
       body: cartAsync.when(
         data: (cart) {
           if (cart.items.isEmpty) {
-            return _EmptyCart(
-              onBrowse: () => Navigator.pop(context),
-            );
+            return _EmptyCart(onBrowse: () => Navigator.pop(context));
           }
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -33,7 +35,9 @@ class CartScreen extends ConsumerWidget {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      const Expanded(child: Text('Sous-total', style: TextStyle(fontWeight: FontWeight.w600))),
+                      const Expanded(
+                        child: Text('Sous-total', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
                       Text(_fmtMoney(cart.total), style: const TextStyle(fontWeight: FontWeight.w700)),
                     ],
                   ),
@@ -59,14 +63,14 @@ class CartScreen extends ConsumerWidget {
         ),
       ),
       bottomNavigationBar: cartAsync.maybeWhen(
-        data: (cart) => cart.items.isEmpty ? null : SafeArea(
+        data: (cart) => cart.items.isEmpty
+            ? null
+            : SafeArea(
           minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
           child: SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: () {
-                Navigator.pushNamed(context, CheckoutScreen.route);
-              },
+              onPressed: () => Navigator.pushNamed(context, CheckoutScreen.route),
               style: FilledButton.styleFrom(
                 backgroundColor: kPrimaryGreenDark,
                 foregroundColor: Colors.white,
@@ -83,15 +87,59 @@ class CartScreen extends ConsumerWidget {
   }
 }
 
-class _CartItemTile extends StatelessWidget {
+class _CartItemTile extends ConsumerStatefulWidget {
   final CartItemModel item;
   final WidgetRef ref;
   const _CartItemTile({required this.item, required this.ref});
 
   @override
+  ConsumerState<_CartItemTile> createState() => _CartItemTileState();
+}
+
+class _CartItemTileState extends ConsumerState<_CartItemTile> {
+  int? _restaurantId;
+  String? _restaurantName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMapping();
+  }
+
+  Future<void> _loadMapping() async {
+    final user = ref.read(authProvider).user;
+    // VegUser utilise "pk" (pas "id")
+    final userId = (user?.pk ?? 0).toString();
+
+    final rid = await CartRestaurantLink.getRestaurantId(
+      userId: userId,
+      externalItemId: widget.item.externalItemId,
+    );
+    final rname = await CartRestaurantLink.getRestaurantName(
+      userId: userId,
+      externalItemId: widget.item.externalItemId,
+    );
+
+    if (mounted) {
+      setState(() {
+        _restaurantId = rid;
+        _restaurantName = rname;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final price = _fmtMoney(item.unitPrice);
-    final total = _fmtMoney(item.lineTotal);
+    final unitPriceStr = _fmtMoney(widget.item.unitPrice);
+    final totalStr = _fmtMoney(widget.item.lineTotal);
+
+    // Sous-titre = prix unitaire + nom resto (si connu)
+    final subtitleLines = <String>[unitPriceStr];
+    if ((_restaurantName ?? '').isNotEmpty) {
+      subtitleLines.add(_restaurantName!);
+    } else if (_restaurantId != null) {
+      subtitleLines.add('Restaurant #$_restaurantId');
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -100,42 +148,61 @@ class _CartItemTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: ListTile(
           leading: const Icon(Icons.flatware),
-          title: Text(item.name),
-          subtitle: Text('$price'),
-          trailing: SizedBox(
-            width: 150,
+          title: Text(widget.item.name),
+          subtitle: Text(subtitleLines.join(' • ')),
+          // === Bloc d’actions et total : anti-overflow ===
+          trailing: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
                   tooltip: 'Retirer 1',
-                  onPressed: () async {
+                  onPressed: _restaurantId == null
+                      ? null
+                      : () async {
                     await setQuantity(
-                      ref,
-                      externalItemId: item.externalItemId,
-                      name: item.name,
-                      unitPrice: double.tryParse(item.unitPrice) ?? 0,
-                      targetQty: item.quantity - 1,
+                      widget.ref,
+                      restaurantId: _restaurantId!,
+                      externalItemId: widget.item.externalItemId,
+                      name: widget.item.name,
+                      unitPrice: double.tryParse(widget.item.unitPrice) ?? 0,
+                      targetQty: widget.item.quantity - 1,
+                      restaurantNameForUi: _restaurantName,
                     );
                   },
                   icon: const Icon(Icons.remove_circle_outline),
                 ),
-                Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text('${widget.item.quantity}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 IconButton(
                   tooltip: 'Ajouter 1',
-                  onPressed: () async {
+                  onPressed: _restaurantId == null
+                      ? null
+                      : () async {
                     await addToCart(
-                      ref,
-                      externalItemId: item.externalItemId,
-                      name: item.name,
-                      unitPrice: double.tryParse(item.unitPrice) ?? 0,
+                      widget.ref,
+                      restaurantId: _restaurantId!,
+                      externalItemId: widget.item.externalItemId,
+                      name: widget.item.name,
+                      unitPrice: double.tryParse(widget.item.unitPrice) ?? 0,
                       quantity: 1,
+                      restaurantNameForUi: _restaurantName,
                     );
                   },
                   icon: const Icon(Icons.add_circle_outline),
                 ),
-                const SizedBox(width: 8),
-                Text(total, style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(width: 6),
+                // Le total prend la place restante et se réduit si nécessaire
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      totalStr,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -144,7 +211,7 @@ class _CartItemTile extends StatelessWidget {
               context: context,
               builder: (_) => AlertDialog(
                 title: const Text('Supprimer cet article ?'),
-                content: Text(item.name),
+                content: Text(widget.item.name),
                 actions: [
                   TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
                   FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Supprimer')),
@@ -152,7 +219,11 @@ class _CartItemTile extends StatelessWidget {
               ),
             );
             if (ok == true) {
-              await removeFromCart(ref, externalItemId: item.externalItemId);
+              await removeFromCart(
+                widget.ref,
+                externalItemId: widget.item.externalItemId,
+                restaurantId: _restaurantId, // précis si connu
+              );
             }
           },
         ),

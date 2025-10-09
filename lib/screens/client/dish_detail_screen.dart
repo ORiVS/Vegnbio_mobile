@@ -1,12 +1,15 @@
+// lib/screens/client/dish_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../models/dish.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/allergen_chip.dart';
 import '../../widgets/dish_avatar.dart';
 import '../../providers/menu_providers.dart';
-import '../../core/api_service.dart';
-import '../../core/api_paths.dart';
+
+// Provider panier : envoie restaurant_id au back + gère le mapping local
+import '../../providers/cart_provider.dart';
 
 class DishDetailScreen extends ConsumerWidget {
   static const route = '/c/dish';
@@ -21,31 +24,40 @@ class DishDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final args = ModalRoute.of(context)!.settings.arguments as Map;
+
+    // Requis
     final Dish dish = args['dish'] as Dish;
     final int restaurantId = (args['restaurantId'] as num).toInt();
     final String date = args['date'] as String;
 
-    final avail = ref.watch(dishAvailableTodayProvider(
-      (restaurantId: restaurantId, dishId: dish.id, date: date),
-    ));
+    // Optionnel : pour l’affichage/mapping UX
+    final String? restaurantName = args['restaurantName'] as String?;
 
-    // Bouton actif seulement si dispo connue et ok
+    final avail = ref.watch(
+      dishAvailableTodayProvider(
+        (restaurantId: restaurantId, dishId: dish.id, date: date),
+      ),
+    );
+
+    // Bouton actif seulement si dispo connue et OK
     final canAdd = avail.maybeWhen(data: (ok) => ok, orElse: () => false);
 
     Future<void> _addToCart() async {
       try {
-        await ApiService.instance.dio.post(ApiPaths.cart, data: {
-          'external_item_id': 'DISH-${dish.id}',  // identifiant snapshot
-          'name': dish.name,
-          'unit_price': dish.price,               // double -> DRF Decimal ok
-          'quantity': 1,                          // quantité par défaut
-        });
+        await addToCart(
+          ref,
+          restaurantId: restaurantId,                // ✅ requis par le back
+          externalItemId: 'DISH-${dish.id}',        // identifiant snapshot
+          name: dish.name,
+          unitPrice: dish.price,                     // double -> DRF Decimal OK
+          restaurantNameForUi: restaurantName,       // optionnel (affichage panier)
+          quantity: 1,
+        );
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Ajouté au panier')),
         );
-        // TODO (plus tard) : ref.invalidate(cartProvider);
-      } catch (e) {
+      } catch (_) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Impossible d’ajouter au panier')),
@@ -54,7 +66,11 @@ class DishDetailScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(leading: const BackButton(color: Colors.black), backgroundColor: Colors.white, elevation: 0),
+      appBar: AppBar(
+        leading: const BackButton(color: Colors.black),
+        backgroundColor: Colors.white,
+        elevation: 0,
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -75,7 +91,6 @@ class DishDetailScreen extends ConsumerWidget {
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             ],
           ),
-
           const SizedBox(height: 10),
           avail.when(
             data: (ok) {
@@ -89,10 +104,10 @@ class DishDetailScreen extends ConsumerWidget {
                 ],
               );
             },
-            loading: () => const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+            loading: () => const SizedBox(
+                height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
             error: (e, _) => Text('Dispo inconnue: $e', style: const TextStyle(color: Colors.red)),
           ),
-
           const SizedBox(height: 16),
           if (dish.description.isNotEmpty) ...[
             const Text('Détails', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -100,7 +115,6 @@ class DishDetailScreen extends ConsumerWidget {
             Text(dish.description),
             const SizedBox(height: 12),
           ],
-
           const Text('Allergènes', style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           if (dish.allergens.isEmpty)
@@ -112,8 +126,7 @@ class DishDetailScreen extends ConsumerWidget {
             ),
         ],
       ),
-
-      // === BOUTON VERT FIXE EN BAS ===
+      // CTA en bas
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         child: SizedBox(
@@ -123,7 +136,7 @@ class DishDetailScreen extends ConsumerWidget {
             icon: const Icon(Icons.add_shopping_cart),
             label: Text(canAdd ? 'Ajouter au panier' : 'Indisponible aujourd’hui'),
             style: FilledButton.styleFrom(
-              backgroundColor: kPrimaryGreenDark,      // ton vert
+              backgroundColor: kPrimaryGreenDark,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

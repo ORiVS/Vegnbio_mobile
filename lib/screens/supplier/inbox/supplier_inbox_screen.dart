@@ -10,6 +10,13 @@ import '../../../models/event_invite.dart';
 
 import 'supplier_order_detail_screen.dart';
 
+// Archive locale + providers
+import '../../../services/orders_archive.dart';
+import '../../../providers/orders_archive_provider.dart';
+
+import '../../../core/api_service.dart';
+import '../../../core/api_paths.dart';
+
 class SupplierInboxScreen extends ConsumerStatefulWidget {
   static const route = '/supplier/inbox';
   const SupplierInboxScreen({super.key});
@@ -21,12 +28,22 @@ class SupplierInboxScreen extends ConsumerStatefulWidget {
 class _SupplierInboxScreenState extends ConsumerState<SupplierInboxScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
-  String? _statusFilter; // null = tous, sinon PENDING_SUPPLIER/...
+  String? _statusFilter; // null = tous ; sinon PENDING_SUPPLIER/…
+
+  // tri courant (par défaut: date desc)
+  ArchiveSort _sort = ArchiveSort.dateDesc;
 
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this); // Commandes / Invitations
+    _tab = TabController(length: 2, vsync: this);
+
+    // ⚠️ Ne pas modifier un provider dans build()
+    // On pousse le tri par défaut APRÈS le premier frame.
+    Future.microtask(() {
+      final cur = ref.read(archiveFiltersProvider);
+      ref.read(archiveFiltersProvider.notifier).state = cur.copyWith(sort: _sort);
+    });
   }
 
   @override
@@ -69,7 +86,25 @@ class _SupplierInboxScreenState extends ConsumerState<SupplierInboxScreen>
           ],
         ),
         actions: [
-          if (_tab.index == 0)
+          if (_tab.index == 0) ...[
+            // TRI
+            PopupMenuButton<ArchiveSort>(
+              tooltip: 'Trier',
+              icon: const Icon(Icons.sort),
+              onSelected: (s) {
+                setState(() => _sort = s);
+                // ✅ Modif provider depuis un callback UI (pas pendant build)
+                final cur = ref.read(archiveFiltersProvider);
+                ref.read(archiveFiltersProvider.notifier).state = cur.copyWith(sort: _sort);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: ArchiveSort.dateDesc,            child: Text('Date ↓')),
+                PopupMenuItem(value: ArchiveSort.dateAsc,             child: Text('Date ↑')),
+                PopupMenuItem(value: ArchiveSort.totalConfirmedDesc,  child: Text('Confirmé ↓')),
+                PopupMenuItem(value: ArchiveSort.totalConfirmedAsc,   child: Text('Confirmé ↑')),
+              ],
+            ),
+            // FILTRE statut
             PopupMenuButton<String>(
               icon: const Icon(Icons.filter_list),
               onSelected: (v) => setState(() => _statusFilter = v == 'ALL' ? null : v),
@@ -82,64 +117,158 @@ class _SupplierInboxScreenState extends ConsumerState<SupplierInboxScreen>
                 PopupMenuItem(value: 'CANCELLED',            child: Text('Annulées')),
               ],
             ),
+          ],
         ],
       ),
       body: TabBarView(
         controller: _tab,
-        children: const [
-          _OrdersTab(),
-          _InvitesTab(),
+        children: [
+          _OrdersTab(statusFilter: _statusFilter),
+          const _InvitesTab(),
         ],
       ),
     );
   }
 }
 
+/* ============================================================
+   Onglet Commandes : combine inbox (API) + historique (local)
+   ============================================================ */
+
 class _OrdersTab extends ConsumerWidget {
-  const _OrdersTab();
+  final String? statusFilter;
+  const _OrdersTab({required this.statusFilter});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(supplierInboxProvider);
+    final inboxAsync    = ref.watch(supplierInboxProvider);           // API: PENDING_SUPPLIER
+    final archiveAsync  = ref.watch(ordersArchiveProvider);           // local: tout
+    final filteredArchive = ref.watch(filteredArchiveOrdersProvider); // tri/filtre (tri lu via archiveFiltersProvider)
 
-    return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Erreur: $e')),
-      data: (list) {
-        if (list.isEmpty) return const _EmptyInbox(text: 'Aucune commande reçue pour le moment.');
-        return RefreshIndicator(
-          onRefresh: () async => ref.invalidate(supplierInboxProvider),
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (_, i) => _OrderTile(o: list[i]),
-          ),
-        );
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(supplierInboxProvider);
+        ref.invalidate(ordersArchiveProvider);
       },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          // INBOX
+          inboxAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (e, _) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text('Erreur (inbox) : $e', style: const TextStyle(color: Colors.red)),
+            ),
+            data: (pending) {
+              final p = (statusFilter == null)
+                  ? pending
+                  : pending.where((o) => o.status == statusFilter).toList();
+
+              if (p.isEmpty) return const SizedBox.shrink();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SectionTitle('À traiter'),
+                  const SizedBox(height: 8),
+                  ...p.map((o) => _OrderTile(o: o)),
+                  const SizedBox(height: 16),
+                ],
+              );
+            },
+          ),
+
+          // HISTORIQUE
+          archiveAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (e, _) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text('Erreur (historique) : $e', style: const TextStyle(color: Colors.red)),
+            ),
+            data: (_) {
+              // enlever doublons avec l’inbox
+              final inboxIds = inboxAsync.maybeWhen(
+                data: (p) => p.map((o) => o.id).toSet(),
+                orElse: () => <int>{},
+              );
+              final hist = filteredArchive.where((o) => !inboxIds.contains(o.id)).toList();
+
+              final histFiltered = statusFilter == null
+                  ? hist
+                  : hist.where((o) => o.status == statusFilter).toList();
+
+              if (histFiltered.isEmpty) {
+                final hadInbox = inboxAsync.maybeWhen(
+                  data: (p) => p.isNotEmpty,
+                  orElse: () => false,
+                );
+                if (!hadInbox) return const _EmptyInbox(text: 'Aucune commande.');
+                return const SizedBox.shrink();
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SectionTitle('Historique'),
+                  const SizedBox(height: 8),
+                  ...histFiltered.map((o) => _OrderTile(o: o)),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _OrderTile extends StatelessWidget {
+class _SectionTitle extends StatelessWidget {
+  final String text;
+  const _SectionTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(text, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16));
+  }
+}
+
+class _OrderTile extends ConsumerWidget {
   final SupplierOrder o;
   const _OrderTile({required this.o});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final badge = _statusBadge(o.status);
     final subtitle = '${o.items.length} article(s) • ${_d(o.createdAt)}';
+
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: ListTile(
         title: Text('Commande #${o.id}', style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(subtitle),
         trailing: badge,
-        onTap: () => Navigator.pushNamed(
-          context,
-          SupplierOrderDetailScreen.route,
-          arguments: o.id,
-        ),
+        onTap: () async {
+          // Met à jour l’archive avec la version API récente
+          try {
+            final res = await ApiService.instance.dio.get(ApiPaths.purchasingOrderDetail(o.id));
+            final data = Map<String, dynamic>.from(res.data as Map);
+            await OrdersArchive.instance.upsert(Map<String, dynamic>.from(res.data as Map));
+          } catch (_) {}
+          if (!context.mounted) return;
+
+          Navigator.pushNamed(
+            context,
+            SupplierOrderDetailScreen.route,
+            arguments: o.id,
+          );
+        },
       ),
     );
   }
@@ -162,6 +291,10 @@ class _OrderTile extends StatelessWidget {
     );
   }
 }
+
+/* ============================================================
+   Onglet Invitations (inchangé)
+   ============================================================ */
 
 class _InvitesTab extends ConsumerWidget {
   const _InvitesTab();
@@ -248,17 +381,30 @@ class _EmptyInbox extends StatelessWidget {
   }
 }
 
+/* ============================================================
+   Helpers
+   ============================================================ */
+
 String _d(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 String _fmtDate(String ymd) {
-  // ymd = YYYY-MM-DD
   if (ymd.length >= 10) return '${ymd.substring(8,10)}/${ymd.substring(5,7)}/${ymd.substring(0,4)}';
   return ymd;
 }
 
 String _fmtTime(String hms) {
-  // hms = HH:MM(:SS)
   if (hms.length >= 5) return hms.substring(0,5);
   return hms;
+}
+
+String statusLabel(String s) {
+  switch (s) {
+    case 'PENDING_SUPPLIER':    return 'En attente';
+    case 'CONFIRMED':           return 'Confirmée';
+    case 'PARTIALLY_CONFIRMED': return 'Partielle';
+    case 'REJECTED':            return 'Rejetée';
+    case 'CANCELLED':           return 'Annulée';
+    default:                    return s;
+  }
 }

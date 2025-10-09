@@ -1,4 +1,3 @@
-// lib/providers/supplier_orders_provider.dart
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -86,24 +85,31 @@ class SupplierOrderReviewer extends StateNotifier<AsyncValue<void>> {
 
   String? lastError;
 
-
+  /// itemIdToQtyConfirmed: { itemId: "12.5", ... } (strings acceptées)
   Future<bool> submit(int orderId, Map<int, String> itemIdToQtyConfirmed) async {
     try {
       lastError = null;
       state = const AsyncValue.loading();
 
-      final Map<String, String> mapped = itemIdToQtyConfirmed.map(
-            (k, v) => MapEntry(k.toString(), v),
-      );
+      // ✅ Le back attend une LISTE d'objets: [{id, qty_confirmed}]
+      final List<Map<String, dynamic>> items = itemIdToQtyConfirmed.entries.map((e) {
+        final id = e.key;
+        final parsed = double.tryParse(e.value.replaceAll(',', '.'));
+        return {
+          'id': id,
+          'qty_confirmed': parsed ?? 0, // envoyer un nombre
+        };
+      }).toList();
 
       await ApiService.instance.dio.post(
+        // ✅ URL corrigée : /review/ (pas /supplier_review/)
         ApiPaths.purchasingOrderSupplierReview(orderId),
-        data: {'items': mapped},
+        data: {'items': items},
       );
 
       state = const AsyncValue.data(null);
 
-      // rafraîchir les vues liées
+      // Rafraîchir les vues liées
       ref.invalidate(supplierInboxProvider);
       ref.invalidate(supplierOrderDetailProvider(orderId));
       return true;

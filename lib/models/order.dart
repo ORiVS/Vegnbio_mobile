@@ -1,3 +1,4 @@
+//lib/models/order.dart
 class OrderItemModel {
   final String externalItemId;
   final String name;

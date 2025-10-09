@@ -1,3 +1,4 @@
+// lib/providers/reservations_provider.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 
@@ -33,24 +34,23 @@ FutureProvider.family<List<Reservation>, int>((ref, restaurantId) async {
   return list.map((e) => Reservation.fromJson(e as Map<String, dynamic>)).toList();
 });
 
-/// ---- Créer une réservation ----
-/// Retourne `null` si OK, sinon `ApiError` prêt pour showErrorDialog(...)
+/// ---- Créer une réservation (CLIENT) ----
+/// Envoie UNIQUEMENT les champs autorisés côté API:
+/// restaurant, date (YYYY-MM-DD), start_time/end_time (HH:MM:SS), party_size
 Future<ApiError?> createReservation({
-  required int? restaurantId,
-  required int? roomId,
+  required int restaurantId,
   required String date,       // YYYY-MM-DD
   required String startTime,  // HH:MM
   required String endTime,    // HH:MM
-  required bool fullRestaurant,
+  required int partySize,     // > 0
 }) async {
   try {
     final payload = {
+      'restaurant': restaurantId,
       'date': date,
       'start_time': '$startTime:00',
       'end_time': '$endTime:00',
-      'full_restaurant': fullRestaurant,
-      if (fullRestaurant) 'restaurant': restaurantId,
-      if (!fullRestaurant) 'room': roomId,
+      'party_size': partySize,
     };
     await ApiService.instance.dio.post(ApiPaths.reservationsList, data: payload);
     return null;
@@ -79,6 +79,40 @@ Future<ApiError?> moderateReservation(int id, String newStatus) async {
     await ApiService.instance.dio.post(
       ApiPaths.reservationModerate(id),
       data: {'status': newStatus},
+    );
+    return null;
+  } on DioException catch (e) {
+    return ApiError.fromDio(e);
+  } catch (e) {
+    return ApiError(messages: [e.toString()]);
+  }
+}
+
+/// ---- Assignation (restaurateur) ----
+/// Affecter une salle au créneau
+Future<ApiError?> assignReservationToRoom({
+  required int reservationId,
+  required int roomId,
+}) async {
+  try {
+    await ApiService.instance.dio.post(
+      '${ApiPaths.reservationDetail(reservationId)}assign/',
+      data: {'room': roomId},
+    );
+    return null;
+  } on DioException catch (e) {
+    return ApiError.fromDio(e);
+  } catch (e) {
+    return ApiError(messages: [e.toString()]);
+  }
+}
+
+/// Réserver tout le restaurant sur ce créneau
+Future<ApiError?> assignReservationAsFull(int reservationId) async {
+  try {
+    await ApiService.instance.dio.post(
+      '${ApiPaths.reservationDetail(reservationId)}assign/',
+      data: {'full_restaurant': true},
     );
     return null;
   } on DioException catch (e) {

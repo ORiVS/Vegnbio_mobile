@@ -1,3 +1,4 @@
+// lib/screens/cart/checkout_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +10,7 @@ import '../../core/api_service.dart';
 import '../../core/api_paths.dart';
 import '../../theme/app_colors.dart';
 import '../../models/order.dart';
+import '../../utils/cart_link_store.dart';
 import 'order_confirmation_screen.dart';
 
 class CheckoutScreen extends ConsumerStatefulWidget {
@@ -68,7 +70,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Récap panier (sous-total)
+            // Récap panier
             cartAsync.when(
               data: (cart) => Card(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -129,7 +131,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Créneau
+            // Créneaux
             slotsAsync.when(
               data: (slots) {
                 if (slots.isEmpty) {
@@ -180,7 +182,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Points
+            // Points fidélité (back already supports)
             _PointsBlock(
               loyaltyAsync: loyaltyAsync,
               cartAsync: cartAsync,
@@ -192,8 +194,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ],
         ),
       ),
-
-      // CTA confirmer
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         child: SizedBox(
@@ -236,7 +236,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       };
 
       final res = await ApiService.instance.dio.post(ApiPaths.checkout, data: payload);
-      // la réponse: { message, order: { ... } }
       final orderJson = (res.data as Map<String, dynamic>)['order'] as Map<String, dynamic>;
       final order = OrderModel.fromJson(orderJson);
 
@@ -244,7 +243,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       ref.invalidate(cartProvider);
       ref.invalidate(loyaltySummaryProvider);
       ref.invalidate(loyaltyTransactionsProvider);
-      // Optionnel: ref.invalidate(ordersProvider); // si tu veux refetch la liste dans le profil
+
+      // 🧹 Purge des mappings (les items ont été consommés)
+      final user = ref.read(authProvider).user;
+      final userId = (user?.pk ?? 0).toString();
+      await CartRestaurantLink.clearAllForUser(userId);
 
       if (!mounted) return;
       Navigator.pushReplacementNamed(
@@ -282,7 +285,6 @@ class _PointsBlock extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('Utiliser mes points', style: TextStyle(fontWeight: FontWeight.w700)),
-
           const SizedBox(height: 8),
           loyaltyAsync.when(
             data: (sum) {

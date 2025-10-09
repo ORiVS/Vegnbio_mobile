@@ -21,7 +21,6 @@ class ClientReservationsScreen extends ConsumerWidget {
 
     return SafeArea(
       child: Padding(
-        // titre un peu plus bas
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,7 +52,7 @@ class ClientReservationsScreen extends ConsumerWidget {
                               textAlign: TextAlign.center,
                               style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
                           const SizedBox(height: 6),
-                          Text('Vos réservations à venir apparaîtront ici.',
+                          Text('Vos futures réservations confirmées apparaîtront ici.',
                               textAlign: TextAlign.center,
                               style: TextStyle(color: Colors.grey.shade600)),
                         ],
@@ -104,8 +103,8 @@ class ClientReservationsScreen extends ConsumerWidget {
   Future<void> _onCancel(BuildContext context, WidgetRef ref, int id) async {
     final confirm = await showConfirmDialog(
       context,
-      title: 'Annuler la réservation ?',
-      message: 'Cette action est définitive.',
+      title: 'Annuler la demande ?',
+      message: 'Seules les réservations en attente peuvent être annulées.',
       confirmLabel: 'Oui, annuler',
     );
     if (confirm != true) return;
@@ -125,7 +124,6 @@ class ClientReservationsScreen extends ConsumerWidget {
   }
 }
 
-/// Petite carte custom → évite complètement les overflow des ListTile
 class _ReservationCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -158,7 +156,6 @@ class _ReservationCard extends StatelessWidget {
             Icon(icon, size: 24, color: kPrimaryGreenDark),
             const SizedBox(width: 12),
 
-            // Texte
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -183,7 +180,6 @@ class _ReservationCard extends StatelessWidget {
 
             const SizedBox(width: 12),
 
-            // Statut + action
             Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,

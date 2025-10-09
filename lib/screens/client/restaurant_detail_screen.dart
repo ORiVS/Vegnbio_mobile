@@ -1,3 +1,4 @@
+// lib/screens/client/restaurant_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vegnbio_app/screens/client/restaurant_menu_screen.dart';
@@ -85,9 +86,14 @@ class _ClientRestaurantDetailScreenState extends ConsumerState<ClientRestaurantD
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
                 onPressed: () {
-                  Navigator.pushNamed(context, ClientRestaurantMenuScreen.route, arguments: {
-                    'restaurantId': r.id,
-                  });
+                  Navigator.pushNamed(
+                    context,
+                    ClientRestaurantMenuScreen.route,
+                    arguments: {
+                      'restaurantId': r.id,
+                      'restaurantName': r.name, // optionnel
+                    },
+                  );
                 },
                 child: const Text('Voir le menu'),
               ),
@@ -109,7 +115,7 @@ class _ClientRestaurantDetailScreenState extends ConsumerState<ClientRestaurantD
 
               const SizedBox(height: 12),
               PrimaryCta(
-                text: 'Réserver le restaurant entier',
+                text: 'Faire une réservation',
                 onPressed: () {
                   Navigator.pushNamed(context, ClientReservationNewScreen.route, arguments: {
                     'restaurantId': r.id,
@@ -118,6 +124,19 @@ class _ClientRestaurantDetailScreenState extends ConsumerState<ClientRestaurantD
                   });
                 },
               ),
+
+              // (Exemple si tu veux afficher le menu ici)
+              // menusAsync.when(
+              //   data: (menu) => unavailableAsync.when(
+              //     data: (unavailable) => Column(
+              //       children: _buildCourseSections(context, r, menu, unavailable, dateStr),
+              //     ),
+              //     loading: () => const SizedBox.shrink(),
+              //     error: (_, __) => const SizedBox.shrink(),
+              //   ),
+              //   loading: () => const SizedBox.shrink(),
+              //   error: (_, __) => const SizedBox.shrink(),
+              // ),
             ],
           );
         },
@@ -127,7 +146,13 @@ class _ClientRestaurantDetailScreenState extends ConsumerState<ClientRestaurantD
     );
   }
 
-  List<Widget> _buildCourseSections(BuildContext context, Menu menu, Set<int> unavailableIds) {
+  List<Widget> _buildCourseSections(
+      BuildContext context,
+      Restaurant r,
+      Menu menu,
+      Set<int> unavailableIds,
+      String dateStr,
+      ) {
     List<Widget> section(String label, CourseType ct) {
       final items = menu.items.where((it) => it.course == ct && (it.dish != null)).toList();
       if (items.isEmpty) return [];
@@ -144,7 +169,16 @@ class _ClientRestaurantDetailScreenState extends ConsumerState<ClientRestaurantD
             child: DishTile(
               dish: d,
               unavailable: un,
-              onTap: () => Navigator.pushNamed(context, DishDetailScreen.route, arguments: d),
+              onTap: () => Navigator.pushNamed(
+                context,
+                DishDetailScreen.route,
+                arguments: {
+                  'dish': d,
+                  'restaurantId': r.id,     // ✅ on passe depuis le restaurant courant
+                  'restaurantName': r.name, // (optionnel, pour l’UI)
+                  'date': dateStr,          // ✅ jour affiché
+                },
+              ),
             ),
           );
         }),
@@ -216,7 +250,7 @@ class _ClientRestaurantDetailScreenState extends ConsumerState<ClientRestaurantD
       final prev = (wd0 - 1) % 7;
       if (prev >= 0 && prev <= 3) return (_mm(r.openingTimeMonToThu), _mm(r.closingTimeMonToThu));
       if (prev == 4) return (_mm(r.openingTimeFriday), _mm(r.closingTimeFriday));
-      if (prev == 5) return (_mm(r.openingTimeSaturday), _mm(r.closingTimeSaturday));
+      if (wd0 == 5) return (_mm(r.openingTimeSaturday), _mm(r.closingTimeSaturday));
       return (_mm(r.openingTimeSunday), _mm(r.closingTimeSunday));
     }
     final (pO, pC) = _prev(wd);

@@ -1,3 +1,4 @@
+//lib/models/cart.dart
 class CartItemModel {
   final int id;
   final String externalItemId;
