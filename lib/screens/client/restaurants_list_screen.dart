@@ -1,4 +1,3 @@
-// lib/screens/client/client_restaurants_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/restaurant.dart';
@@ -10,6 +9,9 @@ import 'restaurant_detail_screen.dart';
 import '../../providers/cart_provider.dart';
 import '../cart/cart_screen.dart';
 
+// ⬇️ Vegbot (chatbot)
+import '../vetbot/vegbot_chat_screen.dart';
+
 class ClientRestaurantsScreen extends ConsumerWidget {
   static const route = '/c/restaurants';
   const ClientRestaurantsScreen({super.key});
@@ -18,75 +20,86 @@ class ClientRestaurantsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(restaurantsProvider);
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ====== EN-TÊTE AVEC ICÔNE PANIER ======
-            Row(
-              children: [
-                const Text(
-                  "RESTAURANTS",
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: kPrimaryGreenDark,
-                    letterSpacing: 1.2,
+    return Scaffold(
+      // === Bouton flottant Vegbot ===
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: kPrimaryGreenDark,
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const VegbotChatScreen()),
+        ),
+        child: const Icon(Icons.pets, color: Colors.white),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ====== EN-TÊTE AVEC ICÔNE PANIER ======
+              Row(
+                children: [
+                  const Text(
+                    "RESTAURANTS",
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: kPrimaryGreenDark,
+                      letterSpacing: 1.2,
+                    ),
                   ),
-                ),
-                const Spacer(),
-                _CartIcon(
-                  onPressed: () => Navigator.pushNamed(context, CartScreen.route),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            const _SearchField(),
-            const SizedBox(height: 16),
-
-            Expanded(
-              child: async.when(
-                data: (list) {
-                  final state = _SearchState.of(context);
-                  final q = state?.query.toLowerCase() ?? '';
-                  final filtered = q.isEmpty
-                      ? list
-                      : list
-                      .where((r) =>
-                  r.name.toLowerCase().contains(q) ||
-                      r.city.toLowerCase().contains(q) ||
-                      r.address.toLowerCase().contains(q))
-                      .toList();
-
-                  if (filtered.isEmpty) {
-                    return const Center(child: Text('Aucun restaurant trouvé.'));
-                  }
-
-                  return ListView.separated(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (c, i) {
-                      final r = filtered[i];
-                      return InkWell(
-                        onTap: () => Navigator.pushNamed(
-                          c,
-                          ClientRestaurantDetailScreen.route,
-                          arguments: r.id,
-                        ),
-                        child: _RestaurantCard(r: r),
-                      );
-                    },
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('Erreur : $e')),
+                  const Spacer(),
+                  _CartIcon(
+                    onPressed: () => Navigator.pushNamed(context, CartScreen.route),
+                  ),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+
+              const _SearchField(),
+              const SizedBox(height: 16),
+
+              Expanded(
+                child: async.when(
+                  data: (list) {
+                    final state = _SearchState.of(context);
+                    final q = state?.query.toLowerCase() ?? '';
+                    final filtered = q.isEmpty
+                        ? list
+                        : list
+                        .where((r) =>
+                    r.name.toLowerCase().contains(q) ||
+                        r.city.toLowerCase().contains(q) ||
+                        r.address.toLowerCase().contains(q))
+                        .toList();
+
+                    if (filtered.isEmpty) {
+                      return const Center(child: Text('Aucun restaurant trouvé.'));
+                    }
+
+                    return ListView.separated(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (c, i) {
+                        final r = filtered[i];
+                        return InkWell(
+                          onTap: () => Navigator.pushNamed(
+                            c,
+                            ClientRestaurantDetailScreen.route,
+                            arguments: r.id,
+                          ),
+                          child: _RestaurantCard(r: r),
+                        );
+                      },
+                    );
+                  },
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(child: Text('Erreur : $e')),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

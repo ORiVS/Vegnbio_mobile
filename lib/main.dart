@@ -1,17 +1,15 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'core/theme.dart';
+import 'core/nav.dart';
+import 'core/require_auth.dart';
 import 'providers/auth_provider.dart';
 
 // Auth
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
-
-// Router par rôle + shells
-import 'screens/home/role_home_router.dart';
 
 // Client
 import 'screens/client/client_shell.dart';
@@ -22,18 +20,9 @@ import 'screens/client/reservations_list_screen.dart';
 import 'screens/client/dish_detail_screen.dart';
 import 'screens/client/event_detail_screen.dart';
 import 'screens/client/restaurant_menu_screen.dart';
-
-// Client – Panier & Commandes
 import 'screens/cart/cart_screen.dart';
 import 'screens/cart/checkout_screen.dart';
 import 'screens/cart/order_confirmation_screen.dart';
-
-// Restaurateur
-import 'screens/resto/resto_shell.dart';
-import 'screens/resto/resto_dashboard_screen.dart';
-import 'screens/resto/resto_reservations_screen.dart';
-
-// Client – Profil
 import 'screens/client/profile/profile_screen.dart';
 import 'screens/client/profile/profile_loyalty_screen.dart';
 import 'screens/client/profile/profile_edit_screen.dart';
@@ -52,100 +41,199 @@ import 'screens/supplier/inbox/supplier_inbox_screen.dart';
 import 'screens/supplier/inbox/supplier_order_detail_screen.dart';
 import 'screens/supplier/inbox/supplier_order_review_screen.dart';
 
+// Vegbot
+import 'screens/vetbot/vegbot_chat_screen.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Charge ton .env (ex: .env ou .env.prod selon build)
   await dotenv.load(fileName: ".env");
   runApp(const ProviderScope(child: VegnBioApp()));
 }
 
-class VegnBioApp extends StatelessWidget {
+class VegnBioApp extends ConsumerWidget {
   const VegnBioApp({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: "Veg'N Bio",
-      theme: appTheme,
-      debugShowCheckedModeBanner: false,
-      // L’écran racine est décidé dynamiquement selon l’auth
-      home: const _AuthGate(),
+  /// Route builder central avec gardes
+  Route<dynamic> _buildRoute(RouteSettings s, WidgetRef ref) {
+    final name = s.name ?? '';
 
-      // 💡 Toutes les routes nommées utilisées avec Navigator.pushNamed
-      routes: {
-        // Router par rôle
-        RoleHomeRouter.route: (_) => const RoleHomeRouter(),
+    Widget page;
+    bool requireAuth = false;
+    Set<String>? allowedRoles;
+    Set<String>? roleOnly;
 
-        // ===== CLIENT =====
-        ClientShell.route: (_) => const ClientShell(),
-        ClientRestaurantsScreen.route: (_) => const ClientRestaurantsScreen(),
-        ClientRestaurantDetailScreen.route: (_) => const ClientRestaurantDetailScreen(),
-        ClientReservationNewScreen.route: (_) => const ClientReservationNewScreen(),
-        ClientReservationsScreen.route: (_) => const ClientReservationsScreen(),
-        ClientRestaurantMenuScreen.route: (_) => const ClientRestaurantMenuScreen(),
-        DishDetailScreen.route: (_) => const DishDetailScreen(),
-        EventDetailScreen.route: (_) => const EventDetailScreen(),
+    switch (name) {
+    // Auth
+      case LoginScreen.route:
+        page = const LoginScreen();
+        break;
+      case RegisterScreen.route:
+        page = const RegisterScreen();
+        break;
 
-        // Panier / Commandes (⚠️ étaient commentées)
-        CartScreen.route: (_) => const CartScreen(),
-        CheckoutScreen.route: (_) => const CheckoutScreen(),
-        OrderConfirmationScreen.route: (_) => const OrderConfirmationScreen(),
+    // ===== CLIENT (Shell + pages) =====
+      case ClientShell.route:
+      case ClientRestaurantsScreen.route:
+        page = const ClientShell();
+        roleOnly = {'CLIENT'};
+        break;
+      case ClientRestaurantDetailScreen.route:
+        page = const ClientRestaurantDetailScreen();
+        roleOnly = {'CLIENT'};
+        break;
+      case ClientReservationNewScreen.route:
+        page = const ClientReservationNewScreen();
+        requireAuth = true; allowedRoles = {'CLIENT'};
+        break;
+      case ClientReservationsScreen.route:
+        page = const ClientReservationsScreen();
+        requireAuth = true; allowedRoles = {'CLIENT'};
+        break;
+      case ClientRestaurantMenuScreen.route:
+        page = const ClientRestaurantMenuScreen();
+        roleOnly = {'CLIENT'};
+        break;
+      case DishDetailScreen.route:
+        page = const DishDetailScreen();
+        roleOnly = {'CLIENT'};
+        break;
+      case EventDetailScreen.route:
+        page = const EventDetailScreen();
+        roleOnly = {'CLIENT'};
+        break;
 
-        // Profil client
-        ClientProfileScreen.route: (_) => const ClientProfileScreen(),
-        ProfileLoyaltyScreen.route: (_) => const ProfileLoyaltyScreen(),
-        ProfileEditScreen.route: (_) => const ProfileEditScreen(),
-        ProfileOrderHistoryScreen.route: (_) => const ProfileOrderHistoryScreen(),
-        ProfileSettingsScreen.route: (_) => const ProfileSettingsScreen(),
+    // Panier / commandes
+      case CartScreen.route:
+        page = const CartScreen();
+        requireAuth = true; allowedRoles = {'CLIENT'};
+        break;
+      case CheckoutScreen.route:
+        page = const CheckoutScreen();
+        requireAuth = true; allowedRoles = {'CLIENT'};
+        break;
+      case OrderConfirmationScreen.route:
+        page = const OrderConfirmationScreen();
+        requireAuth = true; allowedRoles = {'CLIENT'};
+        break;
 
-        // ===== RESTAURATEUR =====
-        RestoShell.route: (_) => const RestoShell(),
-        RestoDashboardScreen.route: (_) => const RestoDashboardScreen(),
-        RestoReservationsScreen.route: (_) => const RestoReservationsScreen(),
+    // Profil client
+      case ClientProfileScreen.route:
+        page = const ClientProfileScreen();
+        requireAuth = true; allowedRoles = {'CLIENT'};
+        break;
+      case ProfileLoyaltyScreen.route:
+        page = const ProfileLoyaltyScreen();
+        requireAuth = true; allowedRoles = {'CLIENT'};
+        break;
+      case ProfileEditScreen.route:
+        page = const ProfileEditScreen();
+        requireAuth = true; allowedRoles = {'CLIENT'};
+        break;
+      case ProfileOrderHistoryScreen.route:
+        page = const ProfileOrderHistoryScreen();
+        requireAuth = true; allowedRoles = {'CLIENT'};
+        break;
+      case ProfileSettingsScreen.route:
+        page = const ProfileSettingsScreen();
+        requireAuth = true; allowedRoles = {'CLIENT'};
+        break;
 
-        // ===== FOURNISSEUR =====
-        SupplierShell.route: (_) => const SupplierShell(),
-        SupplierCatalogScreen.route: (_) => const SupplierCatalogScreen(),
-        SupplierOfferFormScreen.route: (_) => const SupplierOfferFormScreen(),
-        SupplierOfferDetailScreen.route: (_) => const SupplierOfferDetailScreen(),
-        SupplierInboxScreen.route: (_) => const SupplierInboxScreen(),
-        SupplierOrderDetailScreen.route: (_) => const SupplierOrderDetailScreen(),
-        SupplierOrderReviewScreen.route: (_) => const SupplierOrderReviewScreen(),
+    // ===== FOURNISSEUR (Shell + pages) =====
+      case SupplierShell.route:
+        page = const SupplierShell();
+        requireAuth = true; allowedRoles = {'FOURNISSEUR'};
+        break;
+      case SupplierCatalogScreen.route:
+        page = const SupplierCatalogScreen();
+        requireAuth = true; allowedRoles = {'FOURNISSEUR'};
+        break;
+      case SupplierOfferFormScreen.route:
+        page = const SupplierOfferFormScreen();
+        requireAuth = true; allowedRoles = {'FOURNISSEUR'};
+        break;
+      case SupplierOfferDetailScreen.route:
+        page = const SupplierOfferDetailScreen();
+        requireAuth = true; allowedRoles = {'FOURNISSEUR'};
+        break;
+      case SupplierInboxScreen.route:
+        page = const SupplierInboxScreen();
+        requireAuth = true; allowedRoles = {'FOURNISSEUR'};
+        break;
+      case SupplierOrderDetailScreen.route:
+        page = const SupplierOrderDetailScreen();
+        requireAuth = true; allowedRoles = {'FOURNISSEUR'};
+        break;
+      case SupplierOrderReviewScreen.route:
+        page = const SupplierOrderReviewScreen();
+        requireAuth = true; allowedRoles = {'FOURNISSEUR'};
+        break;
+      case '/supplier/reviews':
+        page = const SupplierReviewsScreen();
+        requireAuth = true; allowedRoles = {'FOURNISSEUR'};
+        break;
+      case SupplierReviewDetailScreen.route:
+        page = const SupplierReviewDetailScreen();
+        requireAuth = true; allowedRoles = {'FOURNISSEUR'};
+        break;
+      case '/supplier/profile':
+        page = const SupplierProfileScreen();
+        requireAuth = true; allowedRoles = {'FOURNISSEUR'};
+        break;
 
-        // Navigation directe (si utilisée)
-        '/supplier/reviews': (_) => const SupplierReviewsScreen(),
-        SupplierReviewDetailScreen.route: (_) => const SupplierReviewDetailScreen(),
-        '/supplier/profile': (_) => const SupplierProfileScreen(),
+    // Vegbot
+      case VegbotChatScreen.route:
+        page = const VegbotChatScreen();
+        break;
 
-        // ===== AUTH =====
-        LoginScreen.route: (_) => const LoginScreen(),
-        RegisterScreen.route: (_) => const RegisterScreen(),
-      },
-    );
+    // Fallback → espace client (public)
+      default:
+        page = const ClientShell();
+        roleOnly = {'CLIENT'};
+        break;
+    }
+
+    if (requireAuth) {
+      return MaterialPageRoute(
+        builder: (_) => RequireAuthPage(builder: (_) => page, allowedRoles: allowedRoles),
+        settings: s,
+      );
+    }
+    if (roleOnly != null) {
+      return MaterialPageRoute(
+        builder: (_) => RoleOnlyPage(builder: (_) => page, allowedRoles: roleOnly!),
+        settings: s,
+      );
+    }
+    return MaterialPageRoute(builder: (_) => page, settings: s);
   }
-}
 
-/// Décide de l’écran d’entrée selon l’état d’auth
-class _AuthGate extends ConsumerWidget {
-  const _AuthGate();
+  /// Écran de départ **rôle-aware** :
+  /// - Non connecté → ClientShell (liste des restos)
+  /// - Connecté CLIENT → ClientShell
+  /// - Connecté FOURNISSEUR → SupplierShell
+  Widget _startupHome(WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+
+    if (auth.loading && auth.user == null && !auth.isAuthenticated) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (auth.isAuthenticated && auth.user != null) {
+      return auth.user!.role == 'FOURNISSEUR'
+          ? const SupplierShell()
+          : const ClientShell();
+    }
+    return const ClientShell();
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(authProvider);
-
-    // Splash de chargement pendant la restauration de session
-    if (auth.loading && auth.user == null && !auth.isAuthenticated) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    // Utilisateur connecté -> routeur par rôle
-    if (auth.isAuthenticated && auth.user != null) {
-      return const RoleHomeRouter();
-    }
-
-    // Non connecté -> écran de login
-    return const LoginScreen();
+    return MaterialApp(
+      navigatorKey: appNavigatorKey,        // ← important pour showAuthDialog & interceptors
+      title: "Veg'N Bio",
+      theme: appTheme,
+      debugShowCheckedModeBanner: false,
+      home: _startupHome(ref),
+      onGenerateRoute: (s) => _buildRoute(s, ref),
+    );
   }
 }

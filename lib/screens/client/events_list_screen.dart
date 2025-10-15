@@ -1,12 +1,15 @@
-// lib/screens/client/events_list_screen.dart
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../providers/auth_provider.dart';
 import '../../providers/events_provider.dart';
 import '../../widgets/api_result_dialogs.dart';
 import '../../core/api_error.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/status_chip.dart';
 import 'event_detail_screen.dart';
+import '../auth/login_screen.dart';
 
 class ClientEventsScreen extends ConsumerStatefulWidget {
   const ClientEventsScreen({super.key});
@@ -26,6 +29,16 @@ class _ClientEventsScreenState extends ConsumerState<ClientEventsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authProvider);
+
+    // 🔒 Non connecté → UI explicite (pas d’appel réseau)
+    if (!auth.isAuthenticated || auth.user == null) {
+      return const _AuthRequiredView(
+        title: 'Évènements',
+        message: 'Vous devez être connecté pour voir vos évènements.',
+      );
+    }
+
     final async = ref.watch(eventsProvider);
 
     return SafeArea(
@@ -77,8 +90,7 @@ class _ClientEventsScreenState extends ConsumerState<ClientEventsScreen> {
                         final dateLine = '${ev.date}   ${_hm(ev.startTime)} – ${_hm(ev.endTime)}';
 
                         return InkWell(
-                          onTap: () => Navigator.pushNamed(
-                              c, EventDetailScreen.route, arguments: ev.id),
+                          onTap: () => Navigator.pushNamed(c, EventDetailScreen.route, arguments: ev.id),
                           child: Card(
                             elevation: .6,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -118,7 +130,7 @@ class _ClientEventsScreenState extends ConsumerState<ClientEventsScreen> {
                                   Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      StatusChip(ev.status), // gère PUBLISHED/FULL/CANCELLED/DRAFT
+                                      StatusChip(ev.status),
                                       const SizedBox(height: 8),
                                       _ActionButton(eventId: ev.id, status: ev.status),
                                     ],
@@ -133,7 +145,16 @@ class _ClientEventsScreenState extends ConsumerState<ClientEventsScreen> {
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('Erreur : $e')),
+                // ❌ Auth error → UI explicite
+                error: (e, _) {
+                  if (_looksLikeAuthError(e)) {
+                    return const _AuthRequiredView(
+                      title: 'Évènements',
+                      message: 'Vous devez être connecté pour voir vos évènements.',
+                    );
+                  }
+                  return Center(child: Text('Erreur : $e'));
+                },
               ),
             ),
           ],
@@ -153,7 +174,7 @@ class _Capacity extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final reg = ref.watch(eventRegInfoProvider(evId));
     return reg.maybeWhen(
-      data: (info) => Text('Capacité : ${info.count}/${capacity}',
+      data: (info) => Text('Capacité : ${info.count}/$capacity',
           style: TextStyle(color: Colors.grey.shade700)),
       orElse: () => const SizedBox.shrink(),
     );
@@ -169,7 +190,6 @@ class _ActionButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final reg = ref.watch(eventRegInfoProvider(eventId));
 
-    // Si pas publié → pas d’action
     if (status != 'PUBLISHED') {
       return const SizedBox.shrink();
     }
@@ -209,12 +229,22 @@ class _ActionButton extends ConsumerWidget {
   }
 
   Future<void> _register(BuildContext context, WidgetRef ref) async {
-    final ok = await showConfirmDialog(
-        context, title: 'S’inscrire à cet évènement ?', confirmLabel: 'S’inscrire');
+    final ok = await showConfirmDialog(context, title: 'S’inscrire à cet évènement ?', confirmLabel: 'S’inscrire');
     if (ok != true) return;
 
     final err = await registerToEvent(eventId);
     if (err != null) {
+      if (_apiErrLooksLikeAuth(err)) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const _AuthRequiredView(
+              title: 'Évènements',
+              message: 'Vous devez être connecté pour voir vos évènements.',
+            ),
+          ),
+        );
+        return;
+      }
       await showErrorDialog(context, title: 'Inscription impossible.', error: err);
       return;
     }
@@ -224,12 +254,22 @@ class _ActionButton extends ConsumerWidget {
   }
 
   Future<void> _unregister(BuildContext context, WidgetRef ref) async {
-    final ok = await showConfirmDialog(
-        context, title: 'Se désinscrire ?', confirmLabel: 'Oui, me désinscrire');
+    final ok = await showConfirmDialog(context, title: 'Se désinscrire ?', confirmLabel: 'Oui, me désinscrire');
     if (ok != true) return;
 
     final err = await unregisterFromEvent(eventId);
     if (err != null) {
+      if (_apiErrLooksLikeAuth(err)) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const _AuthRequiredView(
+              title: 'Évènements',
+              message: 'Vous devez être connecté pour voir vos évènements.',
+            ),
+          ),
+        );
+        return;
+      }
       await showErrorDialog(context, title: 'Désinscription impossible.', error: err);
       return;
     }
@@ -237,4 +277,60 @@ class _ActionButton extends ConsumerWidget {
     ref.invalidate(eventRegInfoProvider(eventId));
     ref.invalidate(eventsProvider);
   }
+}
+
+/// UI dédiée “connexion nécessaire”
+class _AuthRequiredView extends StatelessWidget {
+  final String title;
+  final String message;
+  const _AuthRequiredView({required this.title, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 22, fontWeight: FontWeight.w800, color: kPrimaryGreenDark)),
+            const SizedBox(height: 24),
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock_outline, size: 42, color: kPrimaryGreenDark),
+                    const SizedBox(height: 10),
+                    Text(message, textAlign: TextAlign.center),
+                    const SizedBox(height: 10),
+                    FilledButton(
+                      onPressed: () => Navigator.pushNamed(context, LoginScreen.route),
+                      child: const Text('Se connecter'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+bool _looksLikeAuthError(Object e) {
+  if (e is DioException) {
+    if (e.response?.statusCode == 401) return true;
+    if (e.type == DioExceptionType.cancel && (e.error?.toString() == 'auth_required')) return true;
+  }
+  return false;
+}
+
+bool _apiErrLooksLikeAuth(ApiError err) {
+  // Messages retournés par ApiError.fromDio sur 401/guard
+  final txt = err.messages.join(' ').toLowerCase();
+  return txt.contains('authent') || txt.contains('401') || txt.contains('connect');
 }

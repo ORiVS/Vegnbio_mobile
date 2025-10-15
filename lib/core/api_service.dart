@@ -1,39 +1,92 @@
-//lib/core/api_service.dart
 import 'dart:async';
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'nav.dart';
+import 'require_auth.dart';
+import '../screens/auth/login_screen.dart';
+
 class ApiService {
   ApiService._() {
-    // Log clair de la baseUrl effective
-    print('[API] Init with baseUrl=$baseUrl');
+    debugPrint('[API] Init with baseUrl=$baseUrl');
   }
   static final ApiService instance = ApiService._();
 
-  /// Source de vérité de la base URL :
-  /// 1) --dart-define API_BASE_URL
-  /// 2) .env (API_BASE_URL=...)
-  /// 3) fallback émulateur Android (localhost hôte)
+  // ───────────────────────── Base URL ─────────────────────────
   static String get baseUrl {
     const fromDefine = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     if (fromDefine.isNotEmpty) return fromDefine;
     final fromEnv = dotenv.env['API_BASE_URL'] ?? '';
     if (fromEnv.isNotEmpty) return fromEnv;
-    return 'http://10.0.2.2:8000'; // fallback
+    return 'http://10.0.2.2:8000';
   }
 
   static Completer<void>? _refreshCompleter;
+  static bool _authDialogOpen = false;
 
+  // Endpoints publics
+  static final List<String> _publicPaths = <String>[
+    '/api/accounts/login/',
+    '/api/accounts/register/',
+    '/api/accounts/token/refresh/',
+    '/api/restaurants/restaurants/',
+    '/api/menu/menus/',
+    '/api/menu/dishes/',
+    '/api/menu/dish-availability/',
+  ];
+
+  bool _isPublicPath(String path) => _publicPaths.any((p) => path.startsWith(p));
+
+  Future<bool> _ensureAuthBeforeRequest(RequestOptions options) async {
+    // Public → ok
+    if (_isPublicPath(options.path)) return true;
+
+    final prefs = await SharedPreferences.getInstance();
+    final access = prefs.getString('auth_token');
+    if (access != null && access.isNotEmpty) return true;
+
+    // Évite d’empiler les modales
+    if (_authDialogOpen) return false;
+    _authDialogOpen = true;
+
+    try {
+      final accepted = await showAuthDialog(
+        message: 'Veuillez vous connecter pour continuer.',
+      );
+
+      if (accepted) {
+        // Pousse la route *après* fermeture de la modale, via le navigator global
+        scheduleMicrotask(() {
+          final nav = appNavigatorKey.currentState;
+          if (nav != null) {
+            // Evite d’empiler plusieurs Login
+            bool alreadyOnLogin = false;
+            nav.popUntil((r) {
+              if (r.settings.name == LoginScreen.route) alreadyOnLogin = true;
+              return true;
+            });
+            if (!alreadyOnLogin) nav.pushNamed(LoginScreen.route);
+          }
+        });
+      }
+      // on bloque la requête initiale (l’UI relancera après login)
+      return false;
+    } finally {
+      _authDialogOpen = false;
+    }
+  }
+
+  // ───────────────────────── Dio ─────────────────────────
   late final Dio dio = Dio(
     BaseOptions(
-      baseUrl: baseUrl, // ⚠️ sans /api ici (tu mets /api/... dans les chemins).
+      baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 60),
       receiveTimeout: const Duration(seconds: 60),
       headers: {'Content-Type': 'application/json'},
     ),
   )
-  // Logs verbeux
     ..interceptors.add(
       LogInterceptor(
         request: true,
@@ -42,78 +95,84 @@ class ApiService {
         responseBody: true,
         responseHeader: false,
         error: true,
-        logPrint: (obj) => print('[DIO] $obj'),
+        logPrint: (obj) => debugPrint('[DIO] $obj'),
       ),
     )
-  // JWT attach + auto-refresh + retry
     ..interceptors.add(
       InterceptorsWrapper(
+        // Garde + JWT
         onRequest: (options, handler) async {
-          final path = options.path; // ex: /api/accounts/login/
-          // 🔐 Pas de Bearer sur les endpoints auth
-          final skipAuth = path.contains('/api/accounts/login') ||
-              path.contains('/api/accounts/register') ||
-              path.contains('/api/accounts/token/refresh');
+          final ok = await _ensureAuthBeforeRequest(options);
+          if (!ok) {
+            return handler.reject(
+              DioException(
+                requestOptions: options,
+                type: DioExceptionType.cancel,
+                error: 'auth_required',
+              ),
+            );
+          }
 
-          if (!skipAuth) {
+          if (!_isPublicPath(options.path)) {
             final prefs = await SharedPreferences.getInstance();
             final access = prefs.getString('auth_token');
             if (access != null && access.isNotEmpty) {
               options.headers['Authorization'] = 'Bearer $access';
-              print('[REQ] ${options.method} ${options.uri}  (Bearer len=${access.length})');
-            } else {
-              print('[REQ] ${options.method} ${options.uri}  (no Authorization header)');
             }
-          } else {
-            print('[REQ] ${options.method} ${options.uri}  (auth skipped)');
           }
-
-          if (options.data != null) print('[REQ_BODY] ${options.data}');
           handler.next(options);
         },
 
-        onResponse: (resp, handler) {
-          print('[RESP] ${resp.requestOptions.method} ${resp.statusCode} ${resp.requestOptions.path}');
-          handler.next(resp);
-        },
+        onResponse: (resp, handler) => handler.next(resp),
 
+        // Auto-refresh + invite login si refresh impossible
         onError: (err, handler) async {
-          print('[ERR] ${err.requestOptions.method} ${err.requestOptions.uri} '
-              'status=${err.response?.statusCode} type=${err.type} data=${err.response?.data}');
-
           final status = err.response?.statusCode;
           final path = err.requestOptions.path;
           final isAuthPath = path.contains('/api/accounts/login') ||
               path.contains('/api/accounts/token/refresh');
 
-          // 🔁 Refresh access si 401 (et si pas endpoint d'auth)
           if (status == 401 && !isAuthPath) {
             final prefs = await SharedPreferences.getInstance();
             final refresh = prefs.getString('refresh_token');
-            print('[REFRESH] Trigger? refresh=${refresh != null}');
+
             if (refresh == null || refresh.isEmpty) {
+              if (!_authDialogOpen) {
+                _authDialogOpen = true;
+                try {
+                  final accepted = await showAuthDialog(
+                    message: 'Votre session a expiré. Veuillez vous reconnecter.',
+                  );
+                  if (accepted) {
+                    scheduleMicrotask(() {
+                      appNavigatorKey.currentState?.pushNamed(LoginScreen.route);
+                    });
+                  }
+                } finally {
+                  _authDialogOpen = false;
+                }
+              }
               return handler.next(err);
             }
 
+            // Mutualise le refresh en cours
             if (_refreshCompleter == null) {
               _refreshCompleter = Completer<void>();
               try {
-                print('[REFRESH] POST /api/accounts/token/refresh/');
-                final resp =
-                await dio.post('/api/accounts/token/refresh/', data: {'refresh': refresh});
+                final resp = await dio.post(
+                  '/api/accounts/token/refresh/',
+                  data: {'refresh': refresh},
+                );
                 final newAccess = resp.data['access'] as String?;
-                print('[REFRESH] Success? ${newAccess != null}');
-                if (newAccess != null && newAccess.isNotEmpty) {
-                  await prefs.setString('auth_token', newAccess);
-                } else {
+                if (newAccess == null || newAccess.isEmpty) {
                   throw DioException(
                     requestOptions: err.requestOptions,
                     error: 'No access token in refresh response',
                   );
                 }
+                await prefs.setString('auth_token', newAccess);
                 _refreshCompleter!.complete();
               } catch (e) {
-                print('[REFRESH] Failed $e');
                 _refreshCompleter!.completeError(e);
               }
             }
@@ -126,8 +185,9 @@ class ApiService {
             }
             _refreshCompleter = null;
 
-            // 🔁 Rejoue la requête originale avec le nouveau token
-            final newAccess = (await SharedPreferences.getInstance()).getString('auth_token');
+            // Retry de la requête originale
+            final newAccess =
+            (await SharedPreferences.getInstance()).getString('auth_token');
             final req = err.requestOptions;
             final Options opt = Options(
               method: req.method,
@@ -139,7 +199,6 @@ class ApiService {
               contentType: req.contentType,
             );
             try {
-              print('[RETRY] ${req.method} ${req.uri}');
               final response = await dio.request(
                 req.path,
                 data: req.data,
@@ -149,11 +208,8 @@ class ApiService {
                 onReceiveProgress: req.onReceiveProgress,
                 onSendProgress: req.onSendProgress,
               );
-              print('[RETRY_OK] status=${response.statusCode}');
               return handler.resolve(response);
-            } catch (e) {
-              print('[RETRY_FAIL] $e');
-            }
+            } catch (_) {}
           }
 
           handler.next(err);

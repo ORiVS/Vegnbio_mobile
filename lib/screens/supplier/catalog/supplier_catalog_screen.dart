@@ -1,6 +1,8 @@
-// lib/screens/supplier/catalog/supplier_catalog_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../core/jwt_decode.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/supplier_offers_provider.dart';
 import '../../../models/supplier_offer.dart';
@@ -27,109 +29,123 @@ class _SupplierCatalogScreenState extends ConsumerState<SupplierCatalogScreen> {
     super.dispose();
   }
 
+  Future<int?> _getMeId(WidgetRef ref) async {
+    final auth = ref.read(authProvider);
+    final meId = auth.user?.pk;
+    if (meId != null) return meId;
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token');
+    return JwtDecode.userId(token);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final auth = ref.watch(authProvider);
-    final meId = auth.user?.pk;
+    return FutureBuilder<int?>(
+      future: _getMeId(ref),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        final meId = snap.data!;
 
-    final filters = SupplierOfferFilters(
-      q: _search.text.trim().isEmpty ? null : _search.text.trim(),
-      sort: _sort, // tri géré par le back
-    );
-    final async = ref.watch(supplierOffersProvider(filters));
+        final filters = SupplierOfferFilters(
+          q: _search.text.trim().isEmpty ? null : _search.text.trim(),
+          sort: _sort, // tri géré par le back
+        );
+        final async = ref.watch(supplierOffersProvider(filters));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mes offres'),
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list),
-            onSelected: (v) => setState(() => _status = (v == 'ALL') ? null : v),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'ALL',       child: Text('Tous les statuts')),
-              PopupMenuItem(value: 'DRAFT',     child: Text('Brouillon')),
-              PopupMenuItem(value: 'PUBLISHED', child: Text('Publié')),
-              PopupMenuItem(value: 'UNLISTED',  child: Text('Retiré')),
-              PopupMenuItem(value: 'FLAGGED',   child: Text('Signalé')),
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Mes offres'),
+            actions: [
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.filter_list),
+                onSelected: (v) => setState(() => _status = (v == 'ALL') ? null : v),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'ALL',       child: Text('Tous les statuts')),
+                  PopupMenuItem(value: 'DRAFT',     child: Text('Brouillon')),
+                  PopupMenuItem(value: 'PUBLISHED', child: Text('Publié')),
+                  PopupMenuItem(value: 'UNLISTED',  child: Text('Retiré')),
+                  PopupMenuItem(value: 'FLAGGED',   child: Text('Signalé')),
+                ],
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.sort),
+                onSelected: (v) => setState(() => _sort = (v == 'NONE') ? null : v),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'NONE',   child: Text('Tri par défaut')),
+                  PopupMenuItem(value: 'price',  child: Text('Prix ↑')),
+                  PopupMenuItem(value: '-price', child: Text('Prix ↓')),
+                ],
+              ),
             ],
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.sort),
-            onSelected: (v) => setState(() => _sort = (v == 'NONE') ? null : v),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'NONE',   child: Text('Tri par défaut')),
-              PopupMenuItem(value: 'price',  child: Text('Prix ↑')),
-              PopupMenuItem(value: '-price', child: Text('Prix ↓')),
-            ],
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              controller: _search,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'Rechercher une offre…',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: const Color(0xFFF7F7F8),
-                contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
+          body: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: TextField(
+                  controller: _search,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Rechercher une offre…',
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: const Color(0xFFF7F7F8),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              Expanded(
+                child: async.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(child: Text('Erreur: $e')),
+                  data: (listAll) {
+                    // 🔒 Montrer uniquement MES offres
+                    final mine = listAll.where((o) => o.supplierId == meId).toList();
+
+                    // Filtre local par statut
+                    final list = (_status == null)
+                        ? mine
+                        : mine.where((o) => o.status == _status).toList();
+
+                    if (list.isEmpty) {
+                      return _EmptyState(
+                        onCreate: () => Navigator.pushNamed(
+                          context,
+                          SupplierOfferFormScreen.route,
+                        ),
+                      );
+                    }
+
+                    return RefreshIndicator(
+                      onRefresh: () async => ref.invalidate(supplierOffersProvider),
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        itemCount: list.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) => _OfferCard(o: list[i]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: async.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Erreur: $e')),
-              data: (listAll) {
-                // ✅ Si meId est null (ex: /me pas encore chargé), on n’applique pas le filtre
-                final mine = (meId == null)
-                    ? listAll
-                    : listAll.where((o) => o.supplierId == meId).toList();
-
-                // Filtre local par statut (le back n’a pas de param status)
-                final list = (_status == null)
-                    ? mine
-                    : mine.where((o) => o.status == _status).toList();
-
-                if (list.isEmpty) {
-                  return _EmptyState(
-                    onCreate: () => Navigator.pushNamed(
-                      context,
-                      SupplierOfferFormScreen.route,
-                    ),
-                  );
-                }
-
-                return RefreshIndicator(
-                  onRefresh: () async => ref.invalidate(supplierOffersProvider),
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                    itemCount: list.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (_, i) => _OfferCard(o: list[i]),
-                  ),
-                );
-              },
-            ),
+          floatingActionButton: FloatingActionButton.extended(
+            heroTag: 'new-offer',
+            onPressed: () => Navigator.pushNamed(context, SupplierOfferFormScreen.route),
+            backgroundColor: kPrimaryGreenDark,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.add),
+            label: const Text('Nouvelle offre'),
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'new-offer',
-        onPressed: () => Navigator.pushNamed(context, SupplierOfferFormScreen.route),
-        backgroundColor: kPrimaryGreenDark,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('Nouvelle offre'),
-      ),
+        );
+      },
     );
   }
 }

@@ -1,7 +1,8 @@
-// lib/screens/supplier/reviews/supplier_reviews_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/jwt_decode.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/supplier_offers_provider.dart';
 import '../../../providers/supplier_reviews_provider.dart';
@@ -22,7 +23,6 @@ class _SupplierReviewsScreenState extends ConsumerState<SupplierReviewsScreen>
   int? _selectedOfferId;
   int? _ratingFilter; // 1..5
   late final TabController _tab;
-  String _scope = 'MES'; // MES | TOUTES
 
   @override
   void initState() {
@@ -36,133 +36,128 @@ class _SupplierReviewsScreenState extends ConsumerState<SupplierReviewsScreen>
     super.dispose();
   }
 
+  Future<int?> _getMeId(WidgetRef ref) async {
+    final auth = ref.read(authProvider);
+    final meId = auth.user?.pk;
+    if (meId != null) return meId;
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token');
+    return JwtDecode.userId(token);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final auth = ref.watch(authProvider);
-    final meId = auth.user?.pk;
-
-    final offersAsync = ref.watch(supplierOffersProvider(const SupplierOfferFilters()));
-
-    return offersAsync.when(
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.error_outline, size: 36),
-                const SizedBox(height: 8),
-                Text(
-                  e.toString(),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: () => ref.invalidate(supplierOffersProvider(const SupplierOfferFilters())),
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Réessayer'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      data: (allOffers) {
-        // 1) Mes offres vs Toutes
-        List<SupplierOffer> scoped;
-        if (_scope == 'MES' && meId != null) {
-          scoped = allOffers.where((o) => o.supplierId == meId).toList();
-        } else {
-          scoped = allOffers;
+    return FutureBuilder<int?>(
+      future: _getMeId(ref),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
+        final meId = snap.data!;
+        final offersAsync = ref.watch(supplierOffersProvider(const SupplierOfferFilters()));
 
-        // 2) Construire les items du sélecteur
-        final offerItems = scoped
-            .map((o) => DropdownMenuItem<int>(
-          value: o.id,
-          child: Text('${o.productName}  (#${o.id})'),
-        ))
-            .toList();
-
-        // 3) Choisir une offre par défaut
-        if (_selectedOfferId == null && scoped.isNotEmpty) {
-          _selectedOfferId = scoped.first.id;
-        }
-
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Avis & Commentaires'),
-            bottom: TabBar(
-              controller: _tab,
-              tabs: const [Tab(text: 'Avis'), Tab(text: 'Commentaires')],
-            ),
-            actions: [
-              // Affichage Mes/Toutes
-              DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _scope,
-                  items: const [
-                    DropdownMenuItem(value: 'MES', child: Text('Mes offres')),
-                    DropdownMenuItem(value: 'TOUTES', child: Text('Toutes')),
-                  ],
-                  onChanged: (v) => setState(() {
-                    _scope = v ?? 'MES';
-                    // Recalcul de l'offre sélectionnée si la liste change
-                    _selectedOfferId = null;
-                  }),
-                ),
-              ),
-              if (_tab.index == 0)
-                PopupMenuButton<int?>(
-                  onSelected: (v) => setState(() => _ratingFilter = v),
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: null, child: Text('Toutes notes')),
-                    PopupMenuItem(value: 5, child: Text('5★')),
-                    PopupMenuItem(value: 4, child: Text('4★')),
-                    PopupMenuItem(value: 3, child: Text('3★')),
-                    PopupMenuItem(value: 2, child: Text('2★')),
-                    PopupMenuItem(value: 1, child: Text('1★')),
-                  ],
-                  icon: const Icon(Icons.filter_alt),
-                ),
-            ],
-          ),
-          body: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Row(
+        return offersAsync.when(
+          loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+          error: (e, _) => Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        value: _selectedOfferId,
-                        items: offerItems,
-                        onChanged: (v) => setState(() => _selectedOfferId = v),
-                        decoration: const InputDecoration(
-                          labelText: 'Sélectionner une offre',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
+                    const Icon(Icons.error_outline, size: 36),
+                    const SizedBox(height: 8),
+                    Text(
+                      e.toString(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () => ref.invalidate(supplierOffersProvider(const SupplierOfferFilters())),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Réessayer'),
                     ),
                   ],
                 ),
               ),
-              Expanded(
-                child: (_selectedOfferId == null)
-                    ? const Center(child: Text('Aucune offre. Changez le filtre “Affichage” ou créez-en une.'))
-                    : TabBarView(
-                  controller: _tab,
-                  children: [
-                    _ReviewsTab(offerId: _selectedOfferId!, ratingFilter: _ratingFilter),
-                    _CommentsTab(offerId: _selectedOfferId!, myUserId: meId ?? 0),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
+          data: (allOffers) {
+            // 🔒 Ne lister que MES offres
+            final scoped = allOffers.where((o) => o.supplierId == meId).toList();
+
+            // Choisir une offre par défaut
+            if (_selectedOfferId == null && scoped.isNotEmpty) {
+              _selectedOfferId = scoped.first.id;
+            }
+
+            // Items dropdown
+            final offerItems = scoped
+                .map((o) => DropdownMenuItem<int>(
+              value: o.id,
+              child: Text('${o.productName}  (#${o.id})'),
+            ))
+                .toList();
+
+            return Scaffold(
+              appBar: AppBar(
+                title: const Text('Avis & Commentaires'),
+                bottom: TabBar(
+                  controller: _tab,
+                  tabs: const [Tab(text: 'Avis'), Tab(text: 'Commentaires')],
+                ),
+                actions: [
+                  if (_tab.index == 0)
+                    PopupMenuButton<int?>(
+                      onSelected: (v) => setState(() => _ratingFilter = v),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: null, child: Text('Toutes notes')),
+                        PopupMenuItem(value: 5, child: Text('5★')),
+                        PopupMenuItem(value: 4, child: Text('4★')),
+                        PopupMenuItem(value: 3, child: Text('3★')),
+                        PopupMenuItem(value: 2, child: Text('2★')),
+                        PopupMenuItem(value: 1, child: Text('1★')),
+                      ],
+                      icon: const Icon(Icons.filter_alt),
+                    ),
+                ],
+              ),
+              body: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            value: _selectedOfferId,
+                            items: offerItems,
+                            onChanged: (v) => setState(() => _selectedOfferId = v),
+                            decoration: const InputDecoration(
+                              labelText: 'Sélectionner une offre',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: (_selectedOfferId == null)
+                        ? const Center(child: Text('Aucune offre. Créez-en une pour voir les avis.'))
+                        : TabBarView(
+                      controller: _tab,
+                      children: [
+                        _ReviewsTab(offerId: _selectedOfferId!, ratingFilter: _ratingFilter),
+                        _CommentsTab(offerId: _selectedOfferId!, myUserId: meId),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -473,4 +468,4 @@ class _ErrorView extends StatelessWidget {
 }
 
 String _d(DateTime d) =>
-    '${d.day.toString().padLeft(2,'0')}/${d.month.toString().padLeft(2,'0')}/${d.year}';
+    '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';

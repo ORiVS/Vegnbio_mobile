@@ -1,8 +1,8 @@
-// lib/screens/client/reservations_list_screen.dart
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../providers/auth_provider.dart';
 import '../../providers/reservations_provider.dart';
 import '../../core/api_service.dart';
 import '../../core/api_paths.dart';
@@ -10,6 +10,7 @@ import '../../core/api_error.dart';
 import '../../widgets/api_result_dialogs.dart';
 import '../../widgets/status_chip.dart';
 import '../../theme/app_colors.dart';
+import '../auth/login_screen.dart';
 
 class ClientReservationsScreen extends ConsumerWidget {
   static const route = '/c/reservations';
@@ -17,6 +18,16 @@ class ClientReservationsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+
+    // 🔒 Non connecté → UI explicite (pas d’appel réseau)
+    if (!auth.isAuthenticated || auth.user == null) {
+      return const _AuthRequiredView(
+        title: 'Mes réservations',
+        message: 'Vous devez être connecté pour voir vos réservations.',
+      );
+    }
+
     final async = ref.watch(myReservationsProvider);
 
     return SafeArea(
@@ -69,9 +80,7 @@ class ClientReservationsScreen extends ConsumerWidget {
                       itemBuilder: (c, i) {
                         final r = list[i];
                         final isFull = r.fullRestaurant;
-                        final title = isFull
-                            ? (r.restaurantName ?? 'Restaurant')
-                            : (r.roomName ?? 'Salle');
+                        final title = isFull ? (r.restaurantName ?? 'Restaurant') : (r.roomName ?? 'Salle');
                         final line2 = isFull ? 'Restaurant entier' : (r.restaurantName ?? '—');
                         final dateLine = '${r.date}   ${_hm(r.startTime)} – ${_hm(r.endTime)}';
 
@@ -89,7 +98,16 @@ class ClientReservationsScreen extends ConsumerWidget {
                   );
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('Erreur : $e')),
+                // ❌ Auth error → UI explicite (pas le DioException brut)
+                error: (e, _) {
+                  if (_looksLikeAuthError(e)) {
+                    return const _AuthRequiredView(
+                      title: 'Mes réservations',
+                      message: 'Vous devez être connecté pour voir vos réservations.',
+                    );
+                  }
+                  return Center(child: Text('Erreur : $e'));
+                },
               ),
             ),
           ],
@@ -116,6 +134,18 @@ class ClientReservationsScreen extends ConsumerWidget {
       ref.invalidate(myReservationsProvider);
     } on DioException catch (e) {
       if (!context.mounted) return;
+      if (_looksLikeAuthError(e)) {
+        // Remplace l’erreur par l’UI “Se connecter”
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const _AuthRequiredView(
+              title: 'Mes réservations',
+              message: 'Vous devez être connecté pour voir vos réservations.',
+            ),
+          ),
+        );
+        return;
+      }
       await showErrorDialog(context, title: 'Annulation impossible.', error: ApiError.fromDio(e));
     } catch (e) {
       if (!context.mounted) return;
@@ -207,4 +237,55 @@ class _ReservationCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// UI dédiée “connexion nécessaire”
+class _AuthRequiredView extends StatelessWidget {
+  final String title;
+  final String message;
+  const _AuthRequiredView({required this.title, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 22, fontWeight: FontWeight.w800, color: kPrimaryGreenDark)),
+            const SizedBox(height: 24),
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock_outline, size: 42, color: kPrimaryGreenDark),
+                    const SizedBox(height: 10),
+                    Text(message, textAlign: TextAlign.center),
+                    const SizedBox(height: 10),
+                    FilledButton(
+                      onPressed: () => Navigator.pushNamed(context, LoginScreen.route),
+                      child: const Text('Se connecter'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Détecte les erreurs d’auth 401 OU le guard réseau qui annule la requête
+bool _looksLikeAuthError(Object e) {
+  if (e is DioException) {
+    if (e.response?.statusCode == 401) return true;
+    if (e.type == DioExceptionType.cancel && (e.error?.toString() == 'auth_required')) return true;
+  }
+  return false;
 }

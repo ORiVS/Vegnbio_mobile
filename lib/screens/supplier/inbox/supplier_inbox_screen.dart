@@ -1,7 +1,8 @@
-// lib/screens/supplier/inbox/supplier_inbox_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/jwt_decode.dart';
 import '../../../providers/supplier_orders_provider.dart';
 import '../../../models/supplier_order.dart';
 
@@ -38,8 +39,6 @@ class _SupplierInboxScreenState extends ConsumerState<SupplierInboxScreen>
     super.initState();
     _tab = TabController(length: 2, vsync: this);
 
-    // ⚠️ Ne pas modifier un provider dans build()
-    // On pousse le tri par défaut APRÈS le premier frame.
     Future.microtask(() {
       final cur = ref.read(archiveFiltersProvider);
       ref.read(archiveFiltersProvider.notifier).state = cur.copyWith(sort: _sort);
@@ -52,81 +51,104 @@ class _SupplierInboxScreenState extends ConsumerState<SupplierInboxScreen>
     super.dispose();
   }
 
+  Future<int?> _getMeId(WidgetRef ref) async {
+    // tente authProvider, sinon fallback → JWT
+    final auth = ref.read(eventInvitesProvider); // just to keep ref used; not needed
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token');
+    return JwtDecode.userId(token);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final invitesAsync = ref.watch(eventInvitesProvider);
-    final badge = invitesAsync.maybeWhen(
-      data: (list) => list.length,
-      orElse: () => 0,
-    );
+    return FutureBuilder<int?>(
+      future: () async {
+        // on essaie via authProvider d’abord
+        final auth = ref.read(supplierInboxProvider); // ensure provider initialized
+        final prefs = await SharedPreferences.getInstance();
+        final token = prefs.getString('auth_token');
+        return JwtDecode.userId(token);
+      }(),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        final meId = snap.data!;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const Text('Boîte de réception'),
-            const SizedBox(width: 8),
-            if (badge > 0)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade400,
-                  borderRadius: BorderRadius.circular(999),
+        final invitesAsync = ref.watch(eventInvitesProvider);
+        final badge = invitesAsync.maybeWhen(
+          data: (list) => list.length,
+          orElse: () => 0,
+        );
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Row(
+              children: [
+                const Text('Boîte de réception'),
+                const SizedBox(width: 8),
+                if (badge > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade400,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text('$badge invitations',
+                        style: const TextStyle(color: Colors.white, fontSize: 12)),
+                  ),
+              ],
+            ),
+            bottom: TabBar(
+              controller: _tab,
+              tabs: const [
+                Tab(text: 'Commandes'),
+                Tab(text: 'Invitations'),
+              ],
+            ),
+            actions: [
+              if (_tab.index == 0) ...[
+                // TRI
+                PopupMenuButton<ArchiveSort>(
+                  tooltip: 'Trier',
+                  icon: const Icon(Icons.sort),
+                  onSelected: (s) {
+                    setState(() => _sort = s);
+                    final cur = ref.read(archiveFiltersProvider);
+                    ref.read(archiveFiltersProvider.notifier).state = cur.copyWith(sort: _sort);
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: ArchiveSort.dateDesc,            child: Text('Date ↓')),
+                    PopupMenuItem(value: ArchiveSort.dateAsc,             child: Text('Date ↑')),
+                    PopupMenuItem(value: ArchiveSort.totalConfirmedDesc,  child: Text('Confirmé ↓')),
+                    PopupMenuItem(value: ArchiveSort.totalConfirmedAsc,   child: Text('Confirmé ↑')),
+                  ],
                 ),
-                child: Text('$badge invitations',
-                    style: const TextStyle(color: Colors.white, fontSize: 12)),
-              ),
-          ],
-        ),
-        bottom: TabBar(
-          controller: _tab,
-          tabs: const [
-            Tab(text: 'Commandes'),
-            Tab(text: 'Invitations'),
-          ],
-        ),
-        actions: [
-          if (_tab.index == 0) ...[
-            // TRI
-            PopupMenuButton<ArchiveSort>(
-              tooltip: 'Trier',
-              icon: const Icon(Icons.sort),
-              onSelected: (s) {
-                setState(() => _sort = s);
-                // ✅ Modif provider depuis un callback UI (pas pendant build)
-                final cur = ref.read(archiveFiltersProvider);
-                ref.read(archiveFiltersProvider.notifier).state = cur.copyWith(sort: _sort);
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: ArchiveSort.dateDesc,            child: Text('Date ↓')),
-                PopupMenuItem(value: ArchiveSort.dateAsc,             child: Text('Date ↑')),
-                PopupMenuItem(value: ArchiveSort.totalConfirmedDesc,  child: Text('Confirmé ↓')),
-                PopupMenuItem(value: ArchiveSort.totalConfirmedAsc,   child: Text('Confirmé ↑')),
+                // FILTRE statut
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.filter_list),
+                  onSelected: (v) => setState(() => _statusFilter = v == 'ALL' ? null : v),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'ALL',                  child: Text('Tous')),
+                    PopupMenuItem(value: 'PENDING_SUPPLIER',     child: Text('En attente')),
+                    PopupMenuItem(value: 'CONFIRMED',            child: Text('Confirmées')),
+                    PopupMenuItem(value: 'PARTIALLY_CONFIRMED',  child: Text('Partielles')),
+                    PopupMenuItem(value: 'REJECTED',             child: Text('Rejetées')),
+                    PopupMenuItem(value: 'CANCELLED',            child: Text('Annulées')),
+                  ],
+                ),
               ],
-            ),
-            // FILTRE statut
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.filter_list),
-              onSelected: (v) => setState(() => _statusFilter = v == 'ALL' ? null : v),
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'ALL',                  child: Text('Tous')),
-                PopupMenuItem(value: 'PENDING_SUPPLIER',     child: Text('En attente')),
-                PopupMenuItem(value: 'CONFIRMED',            child: Text('Confirmées')),
-                PopupMenuItem(value: 'PARTIALLY_CONFIRMED',  child: Text('Partielles')),
-                PopupMenuItem(value: 'REJECTED',             child: Text('Rejetées')),
-                PopupMenuItem(value: 'CANCELLED',            child: Text('Annulées')),
-              ],
-            ),
-          ],
-        ],
-      ),
-      body: TabBarView(
-        controller: _tab,
-        children: [
-          _OrdersTab(statusFilter: _statusFilter),
-          const _InvitesTab(),
-        ],
-      ),
+            ],
+          ),
+          body: TabBarView(
+            controller: _tab,
+            children: [
+              _OrdersTab(statusFilter: _statusFilter, meId: meId),
+              const _InvitesTab(),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -137,13 +159,14 @@ class _SupplierInboxScreenState extends ConsumerState<SupplierInboxScreen>
 
 class _OrdersTab extends ConsumerWidget {
   final String? statusFilter;
-  const _OrdersTab({required this.statusFilter});
+  final int meId;
+  const _OrdersTab({required this.statusFilter, required this.meId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final inboxAsync    = ref.watch(supplierInboxProvider);           // API: PENDING_SUPPLIER
     final archiveAsync  = ref.watch(ordersArchiveProvider);           // local: tout
-    final filteredArchive = ref.watch(filteredArchiveOrdersProvider); // tri/filtre (tri lu via archiveFiltersProvider)
+    final filteredArchive = ref.watch(filteredArchiveOrdersProvider); // tri/filtre
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -153,7 +176,7 @@ class _OrdersTab extends ConsumerWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
-          // INBOX
+          // INBOX (ne garder que MES commandes)
           inboxAsync.when(
             loading: () => const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
@@ -164,9 +187,10 @@ class _OrdersTab extends ConsumerWidget {
               child: Text('Erreur (inbox) : $e', style: const TextStyle(color: Colors.red)),
             ),
             data: (pending) {
+              final onlyMine = pending.where((o) => o.supplierId == meId).toList();
               final p = (statusFilter == null)
-                  ? pending
-                  : pending.where((o) => o.status == statusFilter).toList();
+                  ? onlyMine
+                  : onlyMine.where((o) => o.status == statusFilter).toList();
 
               if (p.isEmpty) return const SizedBox.shrink();
 
@@ -182,7 +206,7 @@ class _OrdersTab extends ConsumerWidget {
             },
           ),
 
-          // HISTORIQUE
+          // HISTORIQUE (local) – filtrer mes commandes
           archiveAsync.when(
             loading: () => const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
@@ -198,11 +222,15 @@ class _OrdersTab extends ConsumerWidget {
                 data: (p) => p.map((o) => o.id).toSet(),
                 orElse: () => <int>{},
               );
-              final hist = filteredArchive.where((o) => !inboxIds.contains(o.id)).toList();
+
+              final myHist = filteredArchive
+                  .where((o) => o.supplierId == meId)
+                  .where((o) => !inboxIds.contains(o.id))
+                  .toList();
 
               final histFiltered = statusFilter == null
-                  ? hist
-                  : hist.where((o) => o.status == statusFilter).toList();
+                  ? myHist
+                  : myHist.where((o) => o.status == statusFilter).toList();
 
               if (histFiltered.isEmpty) {
                 final hadInbox = inboxAsync.maybeWhen(
@@ -255,10 +283,8 @@ class _OrderTile extends ConsumerWidget {
         subtitle: Text(subtitle),
         trailing: badge,
         onTap: () async {
-          // Met à jour l’archive avec la version API récente
           try {
             final res = await ApiService.instance.dio.get(ApiPaths.purchasingOrderDetail(o.id));
-            final data = Map<String, dynamic>.from(res.data as Map);
             await OrdersArchive.instance.upsert(Map<String, dynamic>.from(res.data as Map));
           } catch (_) {}
           if (!context.mounted) return;
@@ -293,7 +319,7 @@ class _OrderTile extends ConsumerWidget {
 }
 
 /* ============================================================
-   Onglet Invitations (inchangé)
+   Onglet Invitations
    ============================================================ */
 
 class _InvitesTab extends ConsumerWidget {
